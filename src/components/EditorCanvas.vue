@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DEFAULT_TILE_SIZE, TILE_SIZES } from '../model/constants'
 import { isInside, lineCells } from '../model/document'
+import type { Tool } from '../model/tools'
 import type { Cell } from '../model/types'
 import { PIPETTE_CURSOR } from '../render/cursors'
 import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker } from '../render/drawTiles'
@@ -13,7 +14,7 @@ const props = defineProps<{
   locked: boolean
 }>()
 
-const { doc, revision, selectedColor, selectedShape, viewResetToken, activeLayer, activeLayerId } = editor
+const { doc, revision, selectedColor, selectedShape, activeTool, viewResetToken, activeLayer, activeLayerId } = editor
 
 /** 市松模様の 1 マスの大きさ（CSS px） */
 const CHECKER_SIZE = 8
@@ -51,15 +52,37 @@ const gesture = ref<Gesture | null>(null)
 
 /** 非表示のレイヤーは編集できない */
 const editable = computed(() => activeLayer.value.visible)
-/** Alt キー押下中の左クリックはスポイトとして扱う */
-const picking = computed(() => altHeld.value && !gesture.value && !spaceHeld.value)
+
+/** 左クリックの操作。Space キー押下中は Pan、Alt キー押下中は Pick に一時的に切り替える */
+const leftTool = computed<Tool>(() => {
+  if (spaceHeld.value) return 'pan'
+  if (altHeld.value) return 'pick'
+  return activeTool.value
+})
+
+/** マウス位置に対する操作。操作中はその操作とする */
+const hoverTool = computed<Tool>(() => {
+  switch (gesture.value?.kind) {
+    case 'pan':
+      return 'pan'
+    case 'paint':
+      return 'draw'
+    case 'erase':
+      return 'erase'
+    default:
+      return leftTool.value
+  }
+})
 
 const cursor = computed(() => {
-  if (gesture.value?.kind === 'pan') return 'grabbing'
-  if (spaceHeld.value) return 'grab'
-  if (picking.value) return PIPETTE_CURSOR
-  if (!editable.value) return 'not-allowed'
-  return 'crosshair'
+  switch (hoverTool.value) {
+    case 'pan':
+      return gesture.value ? 'grabbing' : 'grab'
+    case 'pick':
+      return PIPETTE_CURSOR
+    default:
+      return editable.value ? 'crosshair' : 'not-allowed'
+  }
 })
 
 const hoverInside = computed(() => hover.value !== null && isInside(doc.value, hover.value.x, hover.value.y))
@@ -185,16 +208,11 @@ function drawOverlay() {
   )
 
   // マウス位置のマス
-  if (
-    hover.value &&
-    hoverInside.value &&
-    (editable.value || picking.value) &&
-    gesture.value?.kind !== 'pan' &&
-    !spaceHeld.value
-  ) {
+  const tool = hoverTool.value
+  if (hover.value && hoverInside.value && tool !== 'pan' && (tool === 'pick' || editable.value)) {
     const { x, y } = hover.value
-    // 空のマスには設置されるタイルを半透明で表示する。編集操作中とスポイト使用中は表示しない
-    if (!gesture.value && !picking.value && !editor.tileAt(x, y)) {
+    // Draw では空のマスに設置されるタイルを半透明で表示する。編集操作中は表示しない
+    if (tool === 'draw' && !gesture.value && !editor.tileAt(x, y)) {
       const path = new Path2D()
       appendShapePath(path, selectedShape.value, map.x(x), map.y(y), map.x(x + 1), map.y(y + 1))
       ctx.globalAlpha = PREVIEW_ALPHA
@@ -202,15 +220,13 @@ function drawOverlay() {
       ctx.fill(path)
       ctx.globalAlpha = 1
     }
-    ctx.strokeStyle = CANVAS_COLORS.hover
+    ctx.strokeStyle = tool === 'erase' ? CANVAS_COLORS.eraseHover : CANVAS_COLORS.hover
     ctx.strokeRect(map.x(x) + line / 2, map.y(y) + line / 2, map.x(x + 1) - map.x(x) - line, map.y(y + 1) - map.y(y) - line)
   }
 }
 
 watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight], () => requestRender(true))
-watch([hover, spaceHeld, picking, gesture, editable, activeLayerId, selectedColor, selectedShape], () =>
-  requestRender(false),
-)
+watch([hover, hoverTool, gesture, editable, activeLayerId, selectedColor, selectedShape], () => requestRender(false))
 
 // ---- 表示位置 ----
 
@@ -299,13 +315,17 @@ function sameCell(a: Cell | null, b: Cell | null): boolean {
 function onPointerDown(event: PointerEvent) {
   if (gesture.value || !container.value) return
   altHeld.value = event.altKey
+  // 右クリックはツールによらず Erase とする
+  const tool = event.button === 0 ? leftTool.value : event.button === 2 ? 'erase' : null
+  if (!tool) return
   const cell = cellAt(event)
-  if (event.button === 0 && !spaceHeld.value && event.altKey) {
-    editor.pickAt(cell.x, cell.y)
+  if (tool === 'pick') {
+    // Pick ツールで拾った場合は Draw に戻る。Alt キーによる一時的な切り替えではツールを変えない
+    if (editor.pickAt(cell.x, cell.y) && activeTool.value === 'pick') editor.selectTool('draw')
     event.preventDefault()
     return
   }
-  if (event.button === 0 && spaceHeld.value) {
+  if (tool === 'pan') {
     gesture.value = {
       kind: 'pan',
       pointerId: event.pointerId,
@@ -314,7 +334,7 @@ function onPointerDown(event: PointerEvent) {
       originX: originX.value,
       originY: originY.value,
     }
-  } else if (event.button === 0) {
+  } else if (tool === 'draw') {
     if (!editor.beginStroke()) return
     let pendingRotate: Cell | null = null
     const tile = editor.tileAt(cell.x, cell.y)
@@ -325,12 +345,10 @@ function onPointerDown(event: PointerEvent) {
       editor.paintAt(cell.x, cell.y)
     }
     gesture.value = { kind: 'paint', pointerId: event.pointerId, last: cell, pendingRotate }
-  } else if (event.button === 2) {
+  } else {
     if (!editor.beginStroke()) return
     editor.eraseAt(cell.x, cell.y)
     gesture.value = { kind: 'erase', pointerId: event.pointerId, last: cell }
-  } else {
-    return
   }
   container.value.setPointerCapture(event.pointerId)
   event.preventDefault()

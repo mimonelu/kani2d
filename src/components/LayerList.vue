@@ -89,7 +89,7 @@ function cancelDrag(event: PointerEvent) {
 <template>
   <section class="layers" aria-labelledby="layers-title">
     <header class="layers__header">
-      <h2 id="layers-title" class="layers__title">Layers</h2>
+      <h2 id="layers-title" class="sidebar-title">Layers</h2>
       <button type="button" class="icon-button" title="Add layer" aria-label="Add layer" @click="editor.addLayer()">
         <Plus :size="16" />
       </button>
@@ -186,14 +186,6 @@ function cancelDrag(event: PointerEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 4px 12px;
-}
-
-.layers__title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-dim);
 }
 
 .layers__list {

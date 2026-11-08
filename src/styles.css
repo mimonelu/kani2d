@@ -167,3 +167,52 @@ input {
     8px 8px;
   background-size: 16px 16px;
 }
+
+/* サイドバーのセクション */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dim);
+}
+
+/* ツールや形状など、いずれか 1 つを選ぶボタン */
+.choice-list {
+  display: flex;
+  gap: 6px;
+}
+
+.choice-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-panel-raised);
+  color: var(--color-text-dim);
+  cursor: pointer;
+}
+
+.choice-button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.choice-button--selected,
+.choice-button--selected:hover {
+  border-color: var(--color-accent);
+  background: var(--color-active);
+  color: var(--color-text);
+}

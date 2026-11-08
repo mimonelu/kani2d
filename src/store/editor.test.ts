@@ -135,6 +135,17 @@ describe('editor store', () => {
     expect(store.selectedColor.value).toBe('#FFFFFF')
   })
 
+  it('selects tools and keeps them out of the persisted state', () => {
+    const store = createEditorStore()
+    expect(store.activeTool.value).toBe('draw')
+    store.selectTool('pan')
+    store.selectTool('fill' as never)
+    expect(store.activeTool.value).toBe('pan')
+    expect(store.exportState()).not.toHaveProperty('tool')
+    store.newDocument()
+    expect(store.activeTool.value).toBe('pan')
+  })
+
   it('edits only the active layer', () => {
     const store = createEditorStore()
     store.addLayer()

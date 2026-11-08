@@ -10,8 +10,10 @@ import NewModal from './components/NewModal.vue'
 import ResizeModal from './components/ResizeModal.vue'
 import SaveAsModal from './components/SaveAsModal.vue'
 import ShapePicker from './components/ShapePicker.vue'
+import ToolPicker from './components/ToolPicker.vue'
 import { FALLBACK_FILE_NAME, FILE_EXTENSION } from './model/constants'
 import { FileFormatError, normalizeFileName } from './model/fileFormat'
+import { toolForKeyCode } from './model/tools'
 import { editor } from './store/editor'
 import { isEditableTarget } from './utils/dom'
 import { downloadBlob } from './utils/download'
@@ -168,6 +170,15 @@ function onSaveAs(name: string) {
 function onKeyDown(event: KeyboardEvent) {
   if (modalOpen.value || isEditableTarget(event.target)) return
   const modifier = event.ctrlKey || event.metaKey
+  if (!modifier && !event.altKey && !event.shiftKey) {
+    // 修飾キーなしのキーでツールを切り替える。IME の状態によらないよう物理キーで判定する
+    const tool = toolForKeyCode(event.code)
+    if (tool) {
+      event.preventDefault()
+      editor.selectTool(tool)
+    }
+    return
+  }
   if (!modifier || event.altKey) return
   const key = event.key.toLowerCase()
   if (key === 'z') {
@@ -200,6 +211,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
       <EditorCanvas class="workspace__canvas" :locked="modalOpen" />
       <aside class="workspace__sidebar">
         <LayerList />
+        <ToolPicker />
         <ShapePicker />
         <ColorPalette />
       </aside>

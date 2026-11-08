@@ -19,6 +19,7 @@ import {
 import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
 import { History } from '../model/history'
 import { DEFAULT_COLOR, PALETTE } from '../model/palette'
+import { DEFAULT_TOOL, isTool, type Tool } from '../model/tools'
 import { Shape, type Doc, type Layer, type Tile } from '../model/types'
 
 interface Snapshot {
@@ -73,6 +74,8 @@ export function createEditorStore() {
   const selectedColor = ref(DEFAULT_COLOR)
   /** 空のマスに設置するタイルの形状 */
   const selectedShape = ref<Shape>(Shape.Square)
+  /** 左クリック・左ドラッグの操作。自動保存の対象外 */
+  const activeTool = ref<Tool>(DEFAULT_TOOL)
   /** 増えるたびにキャンバスの表示を初期状態に戻す */
   const viewResetToken = ref(0)
   const history = new History<Snapshot>(HISTORY_LIMIT)
@@ -195,6 +198,10 @@ export function createEditorStore() {
 
   function selectShape(shape: Shape): void {
     if (isShape(shape)) selectedShape.value = shape
+  }
+
+  function selectTool(tool: Tool): void {
+    if (isTool(tool)) activeTool.value = tool
   }
 
   /**
@@ -329,6 +336,7 @@ export function createEditorStore() {
     activeLayer,
     selectedColor,
     selectedShape,
+    activeTool,
     viewResetToken,
     isDirty,
     canUndo,
@@ -347,6 +355,7 @@ export function createEditorStore() {
     resize,
     selectColor,
     selectShape,
+    selectTool,
     pickAt,
     tileAt,
     beginStroke,

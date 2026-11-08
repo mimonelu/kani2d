@@ -13,9 +13,9 @@ const selectedLabel = computed(() => rgbLabel(selectedColor.value))
 </script>
 
 <template>
-  <section class="palette" aria-labelledby="palette-title">
+  <section class="sidebar-section" aria-labelledby="palette-title">
     <header class="palette__header">
-      <h2 id="palette-title" class="palette__title">Colors</h2>
+      <h2 id="palette-title" class="sidebar-title">Colors</h2>
       <span class="palette__current">
         <span class="palette__current-swatch" :style="{ background: selectedColor }" />
         {{ selectedLabel }}
@@ -40,26 +40,10 @@ const selectedLabel = computed(() => rgbLabel(selectedColor.value))
 </template>
 
 <style scoped>
-.palette {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--color-border);
-}
-
 .palette__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.palette__title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-dim);
 }
 
 .palette__current {

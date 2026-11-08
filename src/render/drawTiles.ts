@@ -7,6 +7,7 @@ export const CANVAS_COLORS = {
   guide: 'rgba(170, 170, 176, 0.55)',
   border: 'rgba(255, 255, 255, 0.18)',
   hover: 'rgba(255, 255, 255, 0.75)',
+  eraseHover: 'rgba(240, 90, 80, 0.9)',
 } as const
 
 /** マスの左上 (x0, y0) と右下 (x1, y1) で表した矩形に形状のパスを追加する */

@@ -18,6 +18,7 @@ A browser-based editor for drawing pictures by placing 2D tiles.
 | Place a tile (in the selected shape) / recolor a tile | Left click or drag |
 | Rotate a tile | Left click a tile of the selected color |
 | Remove a tile | Right click or drag |
+| Pick a tile's shape and color | Alt (⌥) + click |
 | Zoom | Mouse wheel |
 | Pan | Space + drag |
 | Undo / Redo | Ctrl (⌘) + Z / Ctrl (⌘) + Shift + Z |

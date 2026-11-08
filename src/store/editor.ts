@@ -197,6 +197,25 @@ export function createEditorStore() {
     if (isShape(shape)) selectedShape.value = shape
   }
 
+  /**
+   * スポイト。マスにタイルを持つ最前面の表示中のレイヤーから、タイルの形状と色を選択する
+   * - パレットに無い色は選択しない
+   * - 拾うタイルが無い場合は false を返す
+   */
+  function pickAt(x: number, y: number): boolean {
+    const { layers } = doc.value
+    for (let index = layers.length - 1; index >= 0; index--) {
+      const layer = layers[index]!
+      if (!layer.visible) continue
+      const tile = getTile(layer.tiles, x, y)
+      if (!tile) continue
+      selectShape(tile.shape)
+      selectColor(tile.color)
+      return true
+    }
+    return false
+  }
+
   function tileAt(x: number, y: number): Tile | undefined {
     return getTile(activeLayer.value.tiles, x, y)
   }
@@ -328,6 +347,7 @@ export function createEditorStore() {
     resize,
     selectColor,
     selectShape,
+    pickAt,
     tileAt,
     beginStroke,
     paintAt,

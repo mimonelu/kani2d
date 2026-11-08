@@ -78,6 +78,63 @@ describe('editor store', () => {
     expect(store.selectedShape.value).toBe(Shape.BottomLeft)
   })
 
+  it('picks the shape and color of the frontmost visible tile', () => {
+    const store = createEditorStore()
+    store.selectColor('#FF0000')
+    store.selectShape(Shape.TopLeft)
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.paintAt(1, 0)
+    store.endStroke()
+    store.addLayer()
+    store.selectColor('#0000FF')
+    store.selectShape(Shape.BottomLeft)
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.endStroke()
+    const front = store.activeLayerId.value
+
+    store.selectColor('#FFFFFF')
+    store.selectShape(Shape.Square)
+    // 背面のレイヤーがアクティブでも、最前面のタイルを拾う
+    store.setActiveLayer(store.doc.value.layers[0]!.id)
+    expect(store.pickAt(0, 0)).toBe(true)
+    expect(store.selectedColor.value).toBe('#0000FF')
+    expect(store.selectedShape.value).toBe(Shape.BottomLeft)
+    expect(store.pickAt(1, 0)).toBe(true)
+    expect(store.selectedColor.value).toBe('#FF0000')
+    expect(store.selectedShape.value).toBe(Shape.TopLeft)
+
+    // 非表示のレイヤーは対象外
+    store.toggleLayerVisibility(front)
+    expect(store.pickAt(0, 0)).toBe(true)
+    expect(store.selectedColor.value).toBe('#FF0000')
+
+    // 空のマスでは何も変えず、履歴にも積まない
+    store.selectShape(Shape.Square)
+    const before = store.doc.value
+    expect(store.pickAt(5, 5)).toBe(false)
+    expect(store.selectedShape.value).toBe(Shape.Square)
+    expect(store.doc.value).toBe(before)
+  })
+
+  it('picks only the shape when the color is not in the palette', () => {
+    const store = createEditorStore()
+    store.loadFile(
+      JSON.stringify({
+        format: 'kani2d',
+        version: 2,
+        width: 2,
+        height: 2,
+        layers: [{ name: 'Background', visible: true, tiles: [[0, 0, '#123456', 3]] }],
+      }),
+      'odd.ka2',
+    )
+    expect(store.pickAt(0, 0)).toBe(true)
+    expect(store.selectedShape.value).toBe(Shape.BottomRight)
+    expect(store.selectedColor.value).toBe('#FFFFFF')
+  })
+
   it('edits only the active layer', () => {
     const store = createEditorStore()
     store.addLayer()

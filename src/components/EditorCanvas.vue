@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DEFAULT_TILE_SIZE, TILE_SIZES } from '../model/constants'
 import { isInside, lineCells } from '../model/document'
 import type { Cell } from '../model/types'
+import { PIPETTE_CURSOR } from '../render/cursors'
 import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker } from '../render/drawTiles'
 import { editor } from '../store/editor'
 import { isEditableTarget } from '../utils/dom'
@@ -39,6 +40,7 @@ const originX = ref(0)
 const originY = ref(0)
 const hover = ref<Cell | null>(null)
 const spaceHeld = ref(false)
+const altHeld = ref(false)
 
 type Gesture =
   | { kind: 'pan'; pointerId: number; startX: number; startY: number; originX: number; originY: number }
@@ -49,10 +51,13 @@ const gesture = ref<Gesture | null>(null)
 
 /** 非表示のレイヤーは編集できない */
 const editable = computed(() => activeLayer.value.visible)
+/** Alt キー押下中の左クリックはスポイトとして扱う */
+const picking = computed(() => altHeld.value && !gesture.value && !spaceHeld.value)
 
 const cursor = computed(() => {
   if (gesture.value?.kind === 'pan') return 'grabbing'
   if (spaceHeld.value) return 'grab'
+  if (picking.value) return PIPETTE_CURSOR
   if (!editable.value) return 'not-allowed'
   return 'crosshair'
 })
@@ -180,10 +185,16 @@ function drawOverlay() {
   )
 
   // マウス位置のマス
-  if (hover.value && hoverInside.value && editable.value && gesture.value?.kind !== 'pan' && !spaceHeld.value) {
+  if (
+    hover.value &&
+    hoverInside.value &&
+    (editable.value || picking.value) &&
+    gesture.value?.kind !== 'pan' &&
+    !spaceHeld.value
+  ) {
     const { x, y } = hover.value
-    // 空のマスには設置されるタイルを半透明で表示する。編集操作中は表示しない
-    if (!gesture.value && !editor.tileAt(x, y)) {
+    // 空のマスには設置されるタイルを半透明で表示する。編集操作中とスポイト使用中は表示しない
+    if (!gesture.value && !picking.value && !editor.tileAt(x, y)) {
       const path = new Path2D()
       appendShapePath(path, selectedShape.value, map.x(x), map.y(y), map.x(x + 1), map.y(y + 1))
       ctx.globalAlpha = PREVIEW_ALPHA
@@ -197,7 +208,9 @@ function drawOverlay() {
 }
 
 watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight], () => requestRender(true))
-watch([hover, spaceHeld, gesture, editable, activeLayerId, selectedColor, selectedShape], () => requestRender(false))
+watch([hover, spaceHeld, picking, gesture, editable, activeLayerId, selectedColor, selectedShape], () =>
+  requestRender(false),
+)
 
 // ---- 表示位置 ----
 
@@ -285,7 +298,13 @@ function sameCell(a: Cell | null, b: Cell | null): boolean {
 
 function onPointerDown(event: PointerEvent) {
   if (gesture.value || !container.value) return
+  altHeld.value = event.altKey
   const cell = cellAt(event)
+  if (event.button === 0 && !spaceHeld.value && event.altKey) {
+    editor.pickAt(cell.x, cell.y)
+    event.preventDefault()
+    return
+  }
   if (event.button === 0 && spaceHeld.value) {
     gesture.value = {
       kind: 'pan',
@@ -325,6 +344,7 @@ function onPointerMove(event: PointerEvent) {
     originY.value = current.originY + event.clientY - current.startY
     return
   }
+  altHeld.value = event.altKey
   const cell = cellAt(event)
   if (!sameCell(hover.value, cell)) hover.value = cell
   if (!current || current.pointerId !== event.pointerId || sameCell(current.last, cell)) return
@@ -370,13 +390,22 @@ function onPointerLeave() {
 // ---- キーボード ----
 
 function onKeyDown(event: KeyboardEvent) {
-  if (event.code !== 'Space' || props.locked || isEditableTarget(event.target)) return
+  if (props.locked || isEditableTarget(event.target)) return
+  if (event.key === 'Alt') {
+    altHeld.value = true
+    return
+  }
+  if (event.code !== 'Space') return
   // ページのスクロールやフォーカス中のボタンの押下を防ぐ
   event.preventDefault()
   spaceHeld.value = true
 }
 
 function onKeyUp(event: KeyboardEvent) {
+  if (event.key === 'Alt') {
+    altHeld.value = false
+    return
+  }
   if (event.code !== 'Space') return
   if (!isEditableTarget(event.target)) event.preventDefault()
   spaceHeld.value = false
@@ -384,6 +413,7 @@ function onKeyUp(event: KeyboardEvent) {
 
 function onBlur() {
   spaceHeld.value = false
+  altHeld.value = false
 }
 
 watch(
@@ -391,6 +421,7 @@ watch(
   (locked) => {
     if (locked) {
       spaceHeld.value = false
+      altHeld.value = false
       hover.value = null
     }
   },

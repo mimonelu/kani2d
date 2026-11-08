@@ -1,2 +1,11 @@
 ## Agent
 AGENTS.local.md
+
+## Node
+node_modules/
+dist/
+coverage/
+*.log
+
+## OS
+.DS_Store

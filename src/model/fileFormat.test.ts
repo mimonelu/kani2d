@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest'
+import { addLayer, createDocument, paintTile, rotateTile } from './document'
+import { FileFormatError, baseName, parseDocument, serializeDocument, toSerialized } from './fileFormat'
+
+function sample() {
+  let doc = createDocument(8, 4)
+  paintTile(doc.layers[0]!.tiles, 1, 2, '#FF0000')
+  doc = addLayer(doc, 0).doc
+  paintTile(doc.layers[1]!.tiles, 7, 3, '#0040C0')
+  rotateTile(doc.layers[1]!.tiles, 7, 3)
+  return doc
+}
+
+describe('fileFormat', () => {
+  it('serializes to the documented structure', () => {
+    expect(toSerialized(sample())).toEqual({
+      format: 'kani2d',
+      version: 1,
+      width: 8,
+      height: 4,
+      layers: [
+        { name: 'Background', tiles: [[1, 2, '#FF0000', 0]] },
+        { name: 'Layer 1', tiles: [[7, 3, '#0040C0', 1]] },
+      ],
+    })
+  })
+
+  it('round-trips a document', () => {
+    const doc = sample()
+    const parsed = parseDocument(serializeDocument(doc))
+    expect(toSerialized(parsed)).toEqual(toSerialized(doc))
+  })
+
+  it('ignores tiles outside the canvas and normalizes colors', () => {
+    const parsed = parseDocument(
+      JSON.stringify({
+        format: 'kani2d',
+        version: 1,
+        width: 2,
+        height: 2,
+        layers: [{ name: 'Anything', tiles: [[0, 0, '#ff00aa', 4], [2, 0, '#FFFFFF', 0], [-1, 0, '#FFFFFF', 0]] }],
+      }),
+    )
+    expect(parsed.layers[0]!.name).toBe('Background')
+    expect([...parsed.layers[0]!.tiles.values()]).toEqual([{ x: 0, y: 0, color: '#FF00AA', shape: 4 }])
+  })
+
+  it.each([
+    ['not json', '{'],
+    ['wrong format', JSON.stringify({ format: 'other', version: 1, width: 1, height: 1, layers: [] })],
+    ['newer version', JSON.stringify({ format: 'kani2d', version: 2, width: 1, height: 1, layers: [] })],
+    ['invalid size', JSON.stringify({ format: 'kani2d', version: 1, width: 0, height: 1, layers: [] })],
+    ['no layers', JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [] })],
+    [
+      'invalid shape',
+      JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [{ name: 'a', tiles: [[0, 0, '#FFFFFF', 5]] }] }),
+    ],
+    [
+      'invalid color',
+      JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [{ name: 'a', tiles: [[0, 0, 'red', 0]] }] }),
+    ],
+  ])('rejects %s', (_, text) => {
+    expect(() => parseDocument(text)).toThrow(FileFormatError)
+  })
+
+  it('removes the extension from file names', () => {
+    expect(baseName('drawing.ka2')).toBe('drawing')
+    expect(baseName('my.drawing.ka2')).toBe('my.drawing')
+    expect(baseName('drawing')).toBe('drawing')
+  })
+})

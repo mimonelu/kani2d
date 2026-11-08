@@ -4,6 +4,7 @@ AGENTS.md と矛盾する場合は AGENTS.md を優先し、本ファイルを�
 
 ## 技術構成
 - 言語は TypeScript（strict）、UI は Vue 3（Composition API・SFC）、ビルドは Vite、パッケージマネージャーは npm
+- Node.js のバージョンは v22.23.4 とする
 - 対象ブラウザは PC 版の最新 Chrome / Edge / Firefox / Safari
 - テストは Vitest、型チェックは vue-tsc で行う
 - GitHub Actions で main への push 時にビルドし、GitHub Pages へデプロイする
@@ -45,8 +46,8 @@ AGENTS.md と矛盾する場合は AGENTS.md を優先し、本ファイルを�
 - 左上を基準とし、縮小で範囲外となるタイルは削除する
 
 ### ロード・セーブ
-- 拡張子は `.kani2d`、中身は UTF-8 の JSON とする
-- セーブ時のファイル名は `<ドキュメント名>.kani2d` とする
+- 拡張子は `.ka2`、中身は UTF-8 の JSON とする
+- セーブ時のファイル名は `<ドキュメント名>.ka2` とする
 - ロードに失敗した場合は現在の内容を変更せず、エラーを表示する
 - ロード時、キャンバス範囲外のタイルは無視する
 

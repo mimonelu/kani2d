@@ -2,6 +2,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { CENTER_ANCHOR, DEFAULT_CANVAS_SIZE, HISTORY_LIMIT } from '../model/constants'
 import {
   addLayer as addLayerToDoc,
+  clearLayer as clearLayerInDoc,
   createDocument,
   deleteLayer as deleteLayerFromDoc,
   duplicateLayer as duplicateLayerInDoc,
@@ -186,6 +187,14 @@ export function createEditorStore() {
     const index = indexOf(id)
     if (index < 0) return
     commit(setLayerVisible(doc.value, index, !doc.value.layers[index]!.visible))
+  }
+
+  /** レイヤーのタイルをすべて取り除く */
+  function clearLayer(id: string): void {
+    const index = indexOf(id)
+    if (index < 0) return
+    const next = clearLayerInDoc(doc.value, index)
+    if (next !== doc.value) commit(next)
   }
 
   function moveLayer(from: number, to: number): void {
@@ -395,6 +404,7 @@ export function createEditorStore() {
     duplicateLayer,
     deleteLayer,
     toggleLayerVisibility,
+    clearLayer,
     moveLayer,
     resize,
     trim,

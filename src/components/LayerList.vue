@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Eye, EyeOff, GripVertical, Plus, Trash } from '@lucide/vue'
+import { BrushCleaning, Copy, Eye, EyeOff, GripVertical, Plus, Trash } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import type { Layer } from '../model/types'
 import { editor } from '../store/editor'
@@ -160,7 +160,17 @@ function cancelDrag(event: PointerEvent) {
           >
             <Trash :size="15" />
           </button>
-          <span v-else class="layer__action-placeholder" />
+          <button
+            v-else
+            type="button"
+            class="icon-button"
+            title="Clear layer"
+            aria-label="Clear layer"
+            :disabled="layer.tiles.size === 0"
+            @click.stop="editor.clearLayer(layer.id)"
+          >
+            <BrushCleaning :size="15" />
+          </button>
         </span>
       </li>
       <li
@@ -262,10 +272,6 @@ function cancelDrag(event: PointerEvent) {
   display: flex;
   flex: none;
   gap: 2px;
-}
-
-.layer__action-placeholder {
-  width: 28px;
 }
 
 .layers__indicator {

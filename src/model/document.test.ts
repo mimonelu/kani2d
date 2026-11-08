@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BACKGROUND_LAYER_NAME } from './constants'
 import {
   addLayer,
+  clearLayer,
   contentBounds,
   countTilesRemovedByResize,
   createDocument,
@@ -216,6 +217,18 @@ describe('document', () => {
     expect(doc.layers[1]!.visible).toBe(true)
     expect(setLayerVisible(hidden, 1, false)).toBe(hidden)
     expect(duplicateLayer(hidden, 1).layer.visible).toBe(false)
+  })
+
+  it('clears the tiles of a layer', () => {
+    const doc = addLayer(createDocument(), 0).doc
+    paintTile(doc.layers[0]!.tiles, 0, 0, '#FF0000')
+    paintTile(doc.layers[1]!.tiles, 1, 0, '#FF0000')
+    const cleared = clearLayer(doc, 0)
+    expect(cleared.layers[0]!.tiles.size).toBe(0)
+    expect(cleared.layers[0]!.id).toBe(doc.layers[0]!.id)
+    expect(cleared.layers[1]).toBe(doc.layers[1])
+    expect(doc.layers[0]!.tiles.size).toBe(1)
+    expect(clearLayer(cleared, 0)).toBe(cleared)
   })
 
   it('places, recolors and leaves same-colored tiles unchanged', () => {

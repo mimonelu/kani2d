@@ -266,6 +266,28 @@ describe('editor store', () => {
     store.endStroke()
   })
 
+  it('clears a layer with undo', () => {
+    const store = createEditorStore()
+    const id = store.activeLayerId.value
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.paintAt(1, 0)
+    store.endStroke()
+    store.addLayer()
+    store.clearLayer(id)
+    expect(store.doc.value.layers[0]!.tiles.size).toBe(0)
+    // アクティブなレイヤーは変えない
+    expect(store.activeIndex.value).toBe(1)
+
+    // タイルが無い場合は履歴に積まない
+    const before = store.doc.value
+    store.clearLayer(id)
+    expect(store.doc.value).toBe(before)
+
+    store.undo()
+    expect(store.doc.value.layers[0]!.tiles.size).toBe(2)
+  })
+
   it('resizes around the center with undo', () => {
     const store = createEditorStore()
     store.resize(4, 4)

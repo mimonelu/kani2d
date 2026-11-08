@@ -122,6 +122,16 @@ export function setLayerVisible(doc: Doc, index: number, visible: boolean): Doc 
   return replaceLayers(doc, layers)
 }
 
+/** レイヤーのタイルをすべて取り除く。タイルが無い場合はそのまま返す */
+export function clearLayer(doc: Doc, index: number): Doc {
+  const source = doc.layers[index]
+  if (!source) throw new RangeError(`Layer index out of range: ${index}`)
+  if (source.tiles.size === 0) return doc
+  const layers = [...doc.layers]
+  layers[index] = { ...source, tiles: new Map() }
+  return replaceLayers(doc, layers)
+}
+
 /**
  * 基準位置を保ってリサイズした際のタイルの移動量を返す
  * - 左（上）基準では右（下）側で、右（下）基準では左（上）側で増減する

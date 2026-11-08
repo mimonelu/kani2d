@@ -10,7 +10,7 @@ const lastSettings = {
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { MAX_EXPORT_DIMENSION } from '../model/constants'
+import { FALLBACK_FILE_NAME, MAX_EXPORT_DIMENSION } from '../model/constants'
 import { serializeTiles } from '../model/fileFormat'
 import type { RasterInput, RasterOutput } from '../model/raster'
 import { RasterCancelledError, RasterClient } from '../render/rasterClient'
@@ -27,9 +27,9 @@ const PREVIEW_MAX_PIXELS = 2048 * 2048
 const PREVIEW_DELAY = 150
 
 const { doc, docName } = editor
-// ポップアップ表示中は編集できないため、開いた時点の内容を出力する
+// ポップアップ表示中は編集できないため、開いた時点の内容を出力する。非表示のレイヤーは含めない
 const source = doc.value
-const layers = source.layers.map((layer) => serializeTiles(layer.tiles))
+const layers = source.layers.filter((layer) => layer.visible).map((layer) => serializeTiles(layer.tiles))
 
 const tileSizeInput = ref<string | number>(lastSettings.tileSize)
 const antialias = ref(lastSettings.antialias)
@@ -150,7 +150,7 @@ async function exportImage() {
   previewError.value = null
   try {
     const blob = await client.renderPng(createInput(tileSize.value))
-    downloadBlob(blob, `${docName.value}.png`)
+    downloadBlob(blob, `${docName.value ?? FALLBACK_FILE_NAME}.png`)
     emit('close')
   } catch (e) {
     if (e instanceof RasterCancelledError) return

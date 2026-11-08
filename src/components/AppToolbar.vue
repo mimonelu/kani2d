@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FilePlus, FolderOpen, ImageDown, Save, Scaling } from '@lucide/vue'
-import { APP_NAME } from '../model/constants'
+import { APP_NAME, UNNAMED_FILE_LABEL } from '../model/constants'
 import { editor } from '../store/editor'
 
 const emit = defineEmits<{
@@ -25,7 +25,7 @@ const { docName, isDirty } = editor
       <button type="button" class="button" @click="emit('export')"><ImageDown :size="16" />Export</button>
     </nav>
     <p class="doc-name" :title="isDirty ? 'Unsaved changes' : undefined">
-      <span class="doc-name__text">{{ docName }}</span>
+      <span class="doc-name__text">{{ docName ?? UNNAMED_FILE_LABEL }}</span>
       <span v-if="isDirty" class="doc-name__dirty" aria-label="Unsaved changes">•</span>
     </p>
   </header>

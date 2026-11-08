@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, GripVertical, Plus, Trash } from '@lucide/vue'
+import { Copy, Eye, EyeOff, GripVertical, Plus, Trash } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import type { Layer } from '../model/types'
 import { editor } from '../store/editor'
@@ -102,6 +102,7 @@ function cancelDrag(event: PointerEvent) {
         :class="{
           'layer--active': layer.id === activeLayerId,
           'layer--dragging': drag?.layerId === layer.id,
+          'layer--hidden': !layer.visible,
         }"
         :style="drag?.layerId === layer.id ? { transform: `translateY(${drag.offsetY}px)` } : undefined"
         :data-id="layer.id"
@@ -121,6 +122,7 @@ function cancelDrag(event: PointerEvent) {
         </span>
         <span v-else class="layer__handle layer__handle--placeholder" />
         <LayerThumbnail
+          class="layer__thumbnail"
           :layer="layer"
           :width="doc.width"
           :height="doc.height"
@@ -129,6 +131,16 @@ function cancelDrag(event: PointerEvent) {
         />
         <span class="layer__name" :title="layer.name">{{ layer.name }}</span>
         <span class="layer__actions">
+          <button
+            type="button"
+            class="icon-button"
+            :title="layer.visible ? 'Hide layer' : 'Show layer'"
+            :aria-label="layer.visible ? 'Hide layer' : 'Show layer'"
+            @click.stop="editor.toggleLayerVisibility(layer.id)"
+          >
+            <Eye v-if="layer.visible" :size="15" />
+            <EyeOff v-else :size="15" />
+          </button>
           <button
             type="button"
             class="icon-button"
@@ -239,6 +251,11 @@ function cancelDrag(event: PointerEvent) {
 
 .layer__handle--placeholder {
   cursor: default;
+}
+
+.layer--hidden .layer__thumbnail,
+.layer--hidden .layer__name {
+  opacity: 0.4;
 }
 
 .layer__name {

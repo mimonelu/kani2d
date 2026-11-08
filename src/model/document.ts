@@ -17,20 +17,31 @@ export function tileKey(x: number, y: number): string {
   return `${x},${y}`
 }
 
-export function createLayer(name: string, tiles: TileMap = new Map()): Layer {
-  return { id: createLayerId(), name, tiles }
-}
-
-export function createDocument(width = DEFAULT_CANVAS_SIZE, height = DEFAULT_CANVAS_SIZE): Doc {
-  return { width, height, layers: [createLayer(BACKGROUND_LAYER_NAME)] }
+export function createLayer(name: string, tiles: TileMap = new Map(), visible = true): Layer {
+  return { id: createLayerId(), name, visible, tiles }
 }
 
 export function isValidCanvasSize(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 1
 }
 
-export function isInside(doc: Doc, x: number, y: number): boolean {
-  return x >= 0 && y >= 0 && x < doc.width && y < doc.height
+/** 入力されたキャンバスサイズ（1 以上の整数）を数値にする。不正な場合は null を返す */
+export function parseCanvasSize(input: string | number): number | null {
+  const text = String(input).trim()
+  if (!/^\d+$/.test(text)) return null
+  const value = Number(text)
+  return isValidCanvasSize(value) ? value : null
+}
+
+export function createDocument(width = DEFAULT_CANVAS_SIZE, height = DEFAULT_CANVAS_SIZE): Doc {
+  if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
+    throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
+  }
+  return { width, height, layers: [createLayer(BACKGROUND_LAYER_NAME)] }
+}
+
+export function isInside(size: { readonly width: number; readonly height: number }, x: number, y: number): boolean {
+  return x >= 0 && y >= 0 && x < size.width && y < size.height
 }
 
 function replaceLayers(doc: Doc, layers: readonly Layer[]): Doc {
@@ -60,7 +71,7 @@ export function addLayer(doc: Doc, index: number): { doc: Doc; layer: Layer } {
 export function duplicateLayer(doc: Doc, index: number): { doc: Doc; layer: Layer } {
   const source = doc.layers[index]
   if (!source) throw new RangeError(`Layer index out of range: ${index}`)
-  const layer = createLayer(`${source.name} ${COPY_SUFFIX}`, new Map(source.tiles))
+  const layer = createLayer(`${source.name} ${COPY_SUFFIX}`, new Map(source.tiles), source.visible)
   const layers = [...doc.layers]
   layers.splice(index + 1, 0, layer)
   return { doc: replaceLayers(doc, layers), layer }
@@ -89,19 +100,54 @@ export function moveLayer(doc: Doc, from: number, to: number): Doc {
   return replaceLayers(doc, layers)
 }
 
-/** 左上を基準にリサイズし、範囲外となるタイルを削除する */
+export function setLayerVisible(doc: Doc, index: number, visible: boolean): Doc {
+  const source = doc.layers[index]
+  if (!source) throw new RangeError(`Layer index out of range: ${index}`)
+  if (source.visible === visible) return doc
+  const layers = [...doc.layers]
+  layers[index] = { ...source, visible }
+  return replaceLayers(doc, layers)
+}
+
+/**
+ * 中心を基準にリサイズした際のタイルの移動量を返す
+ * - 差が奇数の場合、端数の 1 マスは右（下）側で増減する。拡大と縮小で同じ側になるため、元のサイズに戻すと元の位置に戻る
+ */
+export function resizeOffset(from: number, to: number): number {
+  return Math.trunc((to - from) / 2)
+}
+
+/** 中心を基準にリサイズし、範囲外となるタイルを削除する */
 export function resizeDocument(doc: Doc, width: number, height: number): Doc {
   if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
+  const dx = resizeOffset(doc.width, width)
+  const dy = resizeOffset(doc.height, height)
   const layers = doc.layers.map((layer) => {
     const tiles: TileMap = new Map()
-    for (const [key, tile] of layer.tiles) {
-      if (tile.x < width && tile.y < height) tiles.set(key, tile)
+    for (const tile of layer.tiles.values()) {
+      const x = tile.x + dx
+      const y = tile.y + dy
+      if (!isInside({ width, height }, x, y)) continue
+      tiles.set(tileKey(x, y), dx === 0 && dy === 0 ? tile : { ...tile, x, y })
     }
     return { ...layer, tiles }
   })
   return { width, height, layers }
+}
+
+/** リサイズで範囲外となるタイルの数を返す */
+export function countTilesRemovedByResize(doc: Doc, width: number, height: number): number {
+  const dx = resizeOffset(doc.width, width)
+  const dy = resizeOffset(doc.height, height)
+  let count = 0
+  for (const layer of doc.layers) {
+    for (const tile of layer.tiles.values()) {
+      if (!isInside({ width, height }, tile.x + dx, tile.y + dy)) count++
+    }
+  }
+  return count
 }
 
 export function nextShape(shape: Shape): Shape {

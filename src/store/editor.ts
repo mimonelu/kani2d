@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef } from 'vue'
-import { DEFAULT_DOC_NAME, HISTORY_LIMIT } from '../model/constants'
+import { DEFAULT_CANVAS_SIZE, HISTORY_LIMIT } from '../model/constants'
 import {
   addLayer as addLayerToDoc,
   createDocument,
@@ -12,6 +12,7 @@ import {
   paintTile,
   resizeDocument,
   rotateTile,
+  setLayerVisible,
   type PaintResult,
 } from '../model/document'
 import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
@@ -35,7 +36,8 @@ export interface PersistedState {
   version: 1
   /** 独自形式ファイルと同じ内容 */
   file: string
-  name: string
+  /** ファイル名が無い場合は null */
+  name: string | null
   dirty: boolean
   color: string
   activeIndex: number
@@ -47,7 +49,7 @@ function isPersistedState(value: unknown): value is PersistedState {
   return (
     state.version === 1 &&
     typeof state.file === 'string' &&
-    typeof state.name === 'string' &&
+    (typeof state.name === 'string' || state.name === null) &&
     typeof state.dirty === 'boolean' &&
     typeof state.color === 'string' &&
     typeof state.activeIndex === 'number'
@@ -61,7 +63,8 @@ export function createEditorStore() {
   const savedDoc = shallowRef<Doc | null>(initialDoc)
   /** ストローク中のタイル変更など、ドキュメントの参照が変わらない変更も含めて増える */
   const revision = ref(0)
-  const docName = ref(DEFAULT_DOC_NAME)
+  /** 拡張子を除いたファイル名。無い場合は undefined */
+  const docName = ref<string | undefined>(undefined)
   const activeLayerId = ref(initialDoc.layers[0]!.id)
   const selectedColor = ref(DEFAULT_COLOR)
   /** 増えるたびにキャンバスの表示を初期状態に戻す */
@@ -101,20 +104,20 @@ export function createEditorStore() {
     apply({ doc: next, activeLayerId: nextActiveLayerId })
   }
 
-  function reset(next: Doc, name: string, saved: boolean): void {
+  function reset(next: Doc, name: string | undefined, saved: boolean): void {
     stroke = null
     history.clear()
     touchHistory()
     doc.value = next
     savedDoc.value = saved ? next : null
-    docName.value = name || DEFAULT_DOC_NAME
+    docName.value = name || undefined
     activeLayerId.value = next.layers[0]!.id
     revision.value++
     viewResetToken.value++
   }
 
-  function newDocument(): void {
-    reset(createDocument(), DEFAULT_DOC_NAME, true)
+  function newDocument(name?: string, width = DEFAULT_CANVAS_SIZE, height = DEFAULT_CANVAS_SIZE): void {
+    reset(createDocument(width, height), name, true)
   }
 
   /** 失敗時は FileFormatError を投げ、現在の内容は変更しない */
@@ -127,8 +130,13 @@ export function createEditorStore() {
     return serializeDocument(doc.value)
   }
 
-  function markSaved(): void {
-    savedDoc.value = doc.value
+  /** 保存したドキュメントを記録する。保存処理中に編集された場合に備え、保存した時点のドキュメントを渡せる */
+  function markSaved(saved: Doc = doc.value): void {
+    savedDoc.value = saved
+  }
+
+  function setDocName(name: string | undefined): void {
+    docName.value = name || undefined
   }
 
   function setActiveLayer(id: string): void {
@@ -159,6 +167,12 @@ export function createEditorStore() {
     commit(next, nextActive)
   }
 
+  function toggleLayerVisibility(id: string): void {
+    const index = indexOf(id)
+    if (index < 0) return
+    commit(setLayerVisible(doc.value, index, !doc.value.layers[index]!.visible))
+  }
+
   function moveLayer(from: number, to: number): void {
     if (from === to) return
     commit(moveLayerInDoc(doc.value, from, to))
@@ -177,9 +191,12 @@ export function createEditorStore() {
     return getTile(activeLayer.value.tiles, x, y)
   }
 
-  /** ストローク開始時にアクティブなレイヤーを複製し、以降はその複製を直接編集する */
+  /**
+   * ストローク開始時にアクティブなレイヤーを複製し、以降はその複製を直接編集する
+   * - 非表示のレイヤーは編集結果が見えないため編集できない
+   */
   function beginStroke(): boolean {
-    if (stroke) return false
+    if (stroke || !activeLayer.value.visible) return false
     const index = activeIndex.value
     const source = doc.value.layers[index]!
     const layer: Layer = { ...source, tiles: new Map(source.tiles) }
@@ -254,7 +271,7 @@ export function createEditorStore() {
     return {
       version: 1,
       file: serialize(),
-      name: docName.value,
+      name: docName.value ?? null,
       dirty: isDirty.value,
       color: selectedColor.value,
       activeIndex: activeIndex.value,
@@ -265,7 +282,7 @@ export function createEditorStore() {
   function restoreState(value: unknown): void {
     if (!isPersistedState(value)) throw new Error('Invalid saved state.')
     const restored = parseDocument(value.file)
-    reset(restored, value.name, !value.dirty)
+    reset(restored, value.name ?? undefined, !value.dirty)
     selectColor(value.color)
     const index = Math.min(Math.max(0, Math.trunc(value.activeIndex)), restored.layers.length - 1)
     activeLayerId.value = restored.layers[index]!.id
@@ -288,10 +305,12 @@ export function createEditorStore() {
     loadFile,
     serialize,
     markSaved,
+    setDocName,
     setActiveLayer,
     addLayer,
     duplicateLayer,
     deleteLayer,
+    toggleLayerVisibility,
     moveLayer,
     resize,
     selectColor,

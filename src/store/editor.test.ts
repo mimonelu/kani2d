@@ -75,9 +75,60 @@ describe('editor store', () => {
     expect(store.isDirty.value).toBe(true)
     store.markSaved()
     expect(store.isDirty.value).toBe(false)
-    store.newDocument()
+
+    // 保存処理中に編集された場合は未保存の変更として残る
+    const saving = store.doc.value
+    store.addLayer()
+    store.markSaved(saving)
+    expect(store.isDirty.value).toBe(true)
+  })
+
+  it('creates a new document with the given name and size', () => {
+    const store = createEditorStore()
+    expect(store.docName.value).toBeUndefined()
+    store.addLayer()
+    store.newDocument('picture', 10, 6)
+    expect(store.docName.value).toBe('picture')
+    expect(store.doc.value).toMatchObject({ width: 10, height: 6 })
     expect(store.doc.value.layers).toHaveLength(1)
+    expect(store.isDirty.value).toBe(false)
     expect(store.canUndo.value).toBe(false)
+    store.newDocument()
+    expect(store.docName.value).toBeUndefined()
+    expect(store.doc.value).toMatchObject({ width: 32, height: 32 })
+    store.setDocName('saved')
+    expect(store.docName.value).toBe('saved')
+  })
+
+  it('toggles layer visibility with undo and does not edit hidden layers', () => {
+    const store = createEditorStore()
+    const id = store.activeLayerId.value
+    store.toggleLayerVisibility(id)
+    expect(store.activeLayer.value.visible).toBe(false)
+    expect(store.isDirty.value).toBe(true)
+    expect(store.beginStroke()).toBe(false)
+    expect(store.paintAt(0, 0)).toBe('unchanged')
+    store.endStroke()
+    expect(store.activeLayer.value.tiles.size).toBe(0)
+
+    store.undo()
+    expect(store.activeLayer.value.visible).toBe(true)
+    expect(store.beginStroke()).toBe(true)
+    expect(store.paintAt(0, 0)).toBe('placed')
+    store.endStroke()
+  })
+
+  it('resizes around the center with undo', () => {
+    const store = createEditorStore()
+    store.resize(4, 4)
+    store.beginStroke()
+    store.paintAt(1, 1)
+    store.endStroke()
+    store.resize(6, 6)
+    expect(store.tileAt(2, 2)).toBeDefined()
+    store.undo()
+    expect(store.doc.value.width).toBe(4)
+    expect(store.tileAt(1, 1)).toBeDefined()
   })
 
   it('loads files and clears history', () => {
@@ -114,6 +165,16 @@ describe('editor store', () => {
     expect(store.selectedColor.value).toBe('#FF0000')
     expect(store.isDirty.value).toBe(true)
     expect(store.tileAt(1, 1)?.color).toBe('#FF0000')
+    expect(store.docName.value).toBeUndefined()
     expect(() => store.restoreState({ version: 1 })).toThrow()
+  })
+
+  it('restores the file name of the persisted state', () => {
+    const source = createEditorStore()
+    source.newDocument('picture')
+    const store = createEditorStore()
+    store.restoreState(source.exportState())
+    expect(store.docName.value).toBe('picture')
+    expect(store.isDirty.value).toBe(false)
   })
 })

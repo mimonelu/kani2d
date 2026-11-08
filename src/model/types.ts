@@ -26,6 +26,8 @@ export interface Layer {
   /** エディタ内でのみ使う識別子。ファイルには保存しない */
   readonly id: string
   readonly name: string
+  /** 非表示のレイヤーはエディタ上で描画せず、出力にも含めない */
+  readonly visible: boolean
   readonly tiles: TileMap
 }
 

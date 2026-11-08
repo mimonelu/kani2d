@@ -5,11 +5,14 @@ export const LAYER_NAME_PREFIX = 'Layer'
 export const COPY_SUFFIX = 'copy'
 
 export const DEFAULT_CANVAS_SIZE = 32
-export const DEFAULT_DOC_NAME = 'kani2d'
+/** ファイル名が無い場合に表示する文字列 */
+export const UNNAMED_FILE_LABEL = 'undefined'
+/** ファイル名が無い場合に保存・出力の候補として使う名前 */
+export const FALLBACK_FILE_NAME = 'kani2d'
 
 export const FILE_EXTENSION = '.ka2'
 export const FILE_FORMAT_ID = 'kani2d'
-export const FILE_FORMAT_VERSION = 1
+export const FILE_FORMAT_VERSION = 2
 
 export const HISTORY_LIMIT = 100
 

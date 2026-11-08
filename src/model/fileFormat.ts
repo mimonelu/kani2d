@@ -1,4 +1,4 @@
-import { BACKGROUND_LAYER_NAME, FILE_FORMAT_ID, FILE_FORMAT_VERSION } from './constants'
+import { BACKGROUND_LAYER_NAME, FILE_EXTENSION, FILE_FORMAT_ID, FILE_FORMAT_VERSION } from './constants'
 import { createLayer, isValidCanvasSize, tileKey } from './document'
 import { COLOR_PATTERN } from './palette'
 import { SHAPE_COUNT, type Doc, type Shape, type TileMap } from './types'
@@ -8,6 +8,8 @@ export type SerializedTile = [number, number, string, Shape]
 
 export interface SerializedLayer {
   name: string
+  /** バージョン 2 で追加。省略時は表示とみなす */
+  visible: boolean
   tiles: SerializedTile[]
 }
 
@@ -39,7 +41,11 @@ export function toSerialized(doc: Doc): SerializedDoc {
     version: FILE_FORMAT_VERSION,
     width: doc.width,
     height: doc.height,
-    layers: doc.layers.map((layer) => ({ name: layer.name, tiles: serializeTiles(layer.tiles) })),
+    layers: doc.layers.map((layer) => ({
+      name: layer.name,
+      visible: layer.visible,
+      tiles: serializeTiles(layer.tiles),
+    })),
   }
 }
 
@@ -108,12 +114,16 @@ export function parseDocument(text: string): Doc {
     throw new FileFormatError('The file has no layers.')
   }
   const layers = data.layers.map((raw: unknown, index: number) => {
-    if (!isRecord(raw) || typeof raw.name !== 'string') {
+    if (
+      !isRecord(raw) ||
+      typeof raw.name !== 'string' ||
+      (raw.visible !== undefined && typeof raw.visible !== 'boolean')
+    ) {
       throw new FileFormatError(`Layer ${index + 1} is invalid.`)
     }
     const tiles = parseTiles(raw.tiles, width, height, index)
     // 先頭は名前によらず背景レイヤーとして扱う
-    return createLayer(index === 0 ? BACKGROUND_LAYER_NAME : raw.name, tiles)
+    return createLayer(index === 0 ? BACKGROUND_LAYER_NAME : raw.name, tiles, raw.visible !== false)
   })
   return { width, height, layers }
 }
@@ -122,4 +132,11 @@ export function parseDocument(text: string): Doc {
 export function baseName(fileName: string): string {
   const dot = fileName.lastIndexOf('.')
   return dot > 0 ? fileName.slice(0, dot) : fileName
+}
+
+/** 入力されたファイル名から前後の空白と独自形式の拡張子を除く。空になる場合は undefined を返す */
+export function normalizeFileName(input: string): string | undefined {
+  let name = input.trim()
+  if (name.toLowerCase().endsWith(FILE_EXTENSION)) name = name.slice(0, -FILE_EXTENSION.length).trim()
+  return name === '' ? undefined : name
 }

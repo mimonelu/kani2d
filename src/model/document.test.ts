@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BACKGROUND_LAYER_NAME } from './constants'
 import {
   addLayer,
+  countTilesRemovedByResize,
   createDocument,
   deleteLayer,
   duplicateLayer,
@@ -11,8 +12,10 @@ import {
   moveLayer,
   nextShape,
   paintTile,
+  parseCanvasSize,
   resizeDocument,
   rotateTile,
+  setLayerVisible,
 } from './document'
 import { Shape, type TileMap } from './types'
 
@@ -62,18 +65,62 @@ describe('document', () => {
     expect(doc.layers.map((l) => l.name)).toEqual(['Background', 'Layer 2', 'Layer 1'])
   })
 
-  it('resizes from the top-left corner and removes tiles outside', () => {
+  it('validates canvas sizes', () => {
+    expect(parseCanvasSize(' 12 ')).toBe(12)
+    expect(parseCanvasSize(3)).toBe(3)
+    expect(parseCanvasSize('0')).toBeNull()
+    expect(parseCanvasSize('1.5')).toBeNull()
+    expect(parseCanvasSize('')).toBeNull()
+    expect(createDocument(3, 2)).toMatchObject({ width: 3, height: 2 })
+    expect(() => createDocument(0, 2)).toThrow()
+  })
+
+  it('resizes around the center and removes tiles outside', () => {
     const doc = createDocument(4, 4)
     const tiles = doc.layers[0]!.tiles
     paintTile(tiles, 0, 0, '#FF0000')
-    paintTile(tiles, 3, 3, '#FF0000')
+    paintTile(tiles, 1, 1, '#00FF00')
+    paintTile(tiles, 2, 2, '#0000FF')
+    expect(countTilesRemovedByResize(doc, 2, 2)).toBe(1)
     const resized = resizeDocument(doc, 2, 2)
     expect(resized.width).toBe(2)
-    expect(resized.layers[0]!.tiles.size).toBe(1)
+    expect([...resized.layers[0]!.tiles.values()].map((t) => [t.x, t.y, t.color])).toEqual([
+      [0, 0, '#00FF00'],
+      [1, 1, '#0000FF'],
+    ])
     expect(resized.layers[0]!.id).toBe(doc.layers[0]!.id)
-    expect(tiles.size).toBe(2)
+    expect(tiles.size).toBe(3)
+
+    const enlarged = resizeDocument(doc, 8, 6)
+    expect(getTile(enlarged.layers[0]!.tiles, 2, 1)?.color).toBe('#FF0000')
+    expect(getTile(enlarged.layers[0]!.tiles, 4, 3)?.color).toBe('#0000FF')
     expect(() => resizeDocument(doc, 0, 2)).toThrow()
     expect(() => resizeDocument(doc, 1.5, 2)).toThrow()
+  })
+
+  it('adds or removes the odd column and row on the right and bottom', () => {
+    const doc = createDocument(4, 4)
+    paintTile(doc.layers[0]!.tiles, 0, 0, '#FF0000')
+    paintTile(doc.layers[0]!.tiles, 3, 3, '#00FF00')
+    const grown = resizeDocument(doc, 5, 5)
+    expect(getTile(grown.layers[0]!.tiles, 0, 0)?.color).toBe('#FF0000')
+    expect(getTile(grown.layers[0]!.tiles, 3, 3)?.color).toBe('#00FF00')
+    const back = resizeDocument(grown, 4, 4)
+    expect(getTile(back.layers[0]!.tiles, 0, 0)?.color).toBe('#FF0000')
+    expect(getTile(back.layers[0]!.tiles, 3, 3)?.color).toBe('#00FF00')
+    const shrunk = resizeDocument(doc, 3, 3)
+    expect([...shrunk.layers[0]!.tiles.keys()]).toEqual(['0,0'])
+  })
+
+  it('toggles layer visibility and keeps it when duplicating', () => {
+    const doc = addLayer(createDocument(), 0).doc
+    expect(doc.layers.every((layer) => layer.visible)).toBe(true)
+    const hidden = setLayerVisible(doc, 1, false)
+    expect(hidden.layers[1]!.visible).toBe(false)
+    expect(hidden.layers[1]!.id).toBe(doc.layers[1]!.id)
+    expect(doc.layers[1]!.visible).toBe(true)
+    expect(setLayerVisible(hidden, 1, false)).toBe(hidden)
+    expect(duplicateLayer(hidden, 1).layer.visible).toBe(false)
   })
 
   it('places, recolors and leaves same-colored tiles unchanged', () => {

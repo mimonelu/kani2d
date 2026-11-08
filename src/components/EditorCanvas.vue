@@ -12,14 +12,18 @@ const props = defineProps<{
   locked: boolean
 }>()
 
-const { doc, revision, selectedColor, viewResetToken } = editor
+const { doc, revision, selectedColor, viewResetToken, activeLayer } = editor
 
 /** 市松模様の 1 マスの大きさ（CSS px） */
 const CHECKER_SIZE = 8
-/** ホイール 1 段階とみなす移動量 */
+/** トラックパッドなどの連続的な入力で 1 段階とみなす移動量 */
 const WHEEL_THRESHOLD = 50
 /** ピンチ操作（ctrlKey 付きのホイール）で 1 段階とみなす移動量 */
 const PINCH_THRESHOLD = 8
+/** この時間（ms）以上間隔が空いたホイール操作は、新たな操作の開始とみなす */
+const WHEEL_GESTURE_GAP = 150
+/** macOS の Chrome / Safari がマウスホイール 1 目盛りにつき返す移動量の単位 */
+const MAC_WHEEL_DELTA = 4.000244140625
 
 const container = ref<HTMLDivElement>()
 const mainCanvas = ref<HTMLCanvasElement>()
@@ -41,9 +45,13 @@ type Gesture =
 
 const gesture = ref<Gesture | null>(null)
 
+/** 非表示のレイヤーは編集できない */
+const editable = computed(() => activeLayer.value.visible)
+
 const cursor = computed(() => {
   if (gesture.value?.kind === 'pan') return 'grabbing'
   if (spaceHeld.value) return 'grab'
+  if (!editable.value) return 'not-allowed'
   return 'crosshair'
 })
 
@@ -129,7 +137,7 @@ function drawMain() {
     y1: Math.min(current.height - 1, Math.ceil((bottom - map.oy) / map.size) + 1),
   }
   for (const layer of current.layers) {
-    drawLayerTiles(ctx, layer, map.x, map.y, range)
+    if (layer.visible) drawLayerTiles(ctx, layer, map.x, map.y, range)
   }
 
   // ガイドポイント（マス目の交点）
@@ -170,7 +178,7 @@ function drawOverlay() {
   )
 
   // マウス位置のマス
-  if (hover.value && hoverInside.value && gesture.value?.kind !== 'pan' && !spaceHeld.value) {
+  if (hover.value && hoverInside.value && editable.value && gesture.value?.kind !== 'pan' && !spaceHeld.value) {
     const { x, y } = hover.value
     ctx.strokeStyle = CANVAS_COLORS.hover
     ctx.strokeRect(map.x(x) + line / 2, map.y(y) + line / 2, map.x(x + 1) - map.x(x) - line, map.y(y + 1) - map.y(y) - line)
@@ -178,7 +186,7 @@ function drawOverlay() {
 }
 
 watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight], () => requestRender(true))
-watch([hover, spaceHeld, gesture], () => requestRender(false))
+watch([hover, spaceHeld, gesture, editable], () => requestRender(false))
 
 // ---- 表示位置 ----
 
@@ -215,22 +223,34 @@ function zoom(direction: 1 | -1, anchorX: number, anchorY: number) {
 }
 
 let wheelAccumulator = 0
+let lastWheelTime = -Infinity
 
+/**
+ * マウスホイールのように 1 目盛りごとにイベントが発生する入力か
+ * - Firefox は deltaY より先に deltaMode を参照した場合に行単位の値を返すため、先に deltaMode を参照する
+ */
+function isNotchedWheel(event: WheelEvent): boolean {
+  if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return true
+  const notches = Math.abs(event.deltaY) / MAC_WHEEL_DELTA
+  return notches >= 1 && Number.isInteger(notches)
+}
+
+/** マウスホイールは 1 目盛りごとに、トラックパッドなどは操作の開始時と移動量が一定に達するごとに 1 段階拡縮する */
 function onWheel(event: WheelEvent) {
   event.preventDefault()
-  const delta =
-    event.deltaMode === WheelEvent.DOM_DELTA_LINE
-      ? event.deltaY * 16
-      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-        ? event.deltaY * viewHeight.value
-        : event.deltaY
+  const notched = isNotchedWheel(event)
+  const delta = event.deltaY
+  const gestureStart = event.timeStamp - lastWheelTime >= WHEEL_GESTURE_GAP
+  lastWheelTime = event.timeStamp
+  // 主に横方向の操作は拡縮に使わない
+  if (delta === 0 || Math.abs(event.deltaX) > Math.abs(delta)) return
   if (Math.sign(delta) !== Math.sign(wheelAccumulator)) wheelAccumulator = 0
   wheelAccumulator += delta
-  if (Math.abs(wheelAccumulator) < (event.ctrlKey ? PINCH_THRESHOLD : WHEEL_THRESHOLD)) return
-  const direction = wheelAccumulator < 0 ? 1 : -1
+  const threshold = event.ctrlKey ? PINCH_THRESHOLD : WHEEL_THRESHOLD
+  if (!notched && !gestureStart && Math.abs(wheelAccumulator) < threshold) return
   wheelAccumulator = 0
   const point = localPoint(event)
-  zoom(direction, point.x, point.y)
+  zoom(delta < 0 ? 1 : -1, point.x, point.y)
 }
 
 // ---- ポインター操作 ----

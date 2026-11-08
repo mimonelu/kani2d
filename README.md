@@ -14,12 +14,14 @@ A browser-based editor for drawing pictures by placing 2D tiles.
 
 | Action | Input |
 | --- | --- |
-| Select a tool | Tool buttons in the sidebar, or B (Draw) / E (Erase) / I (Pick) / H (Pan) |
+| Select a tool | Tool buttons in the sidebar, or B (Draw) / E (Erase) / G (Fill) / I (Pick) / V (Move) / H (Pan) |
 | Select a shape | Shape buttons in the sidebar |
 | Place a tile (in the selected shape) / recolor a tile | Draw: left click or drag |
 | Rotate a tile | Draw: left click a tile of the selected color |
 | Remove a tile | Erase: left click or drag, or right click or drag with any tool |
+| Recolor connected tiles of the same color / fill connected empty cells | Fill: left click |
 | Pick a tile's shape and color | Pick: left click, or Alt (⌥) + click with any tool |
+| Move the active layer | Move: left drag, or Ctrl (⌘) + drag with any tool |
 | Zoom | Mouse wheel |
 | Pan | Pan: left drag, or Space + drag with any tool |
 | Undo / Redo | Ctrl (⌘) + Z / Ctrl (⌘) + Shift + Z |

@@ -258,6 +258,58 @@ export function eraseTile(tiles: TileMap, x: number, y: number): boolean {
   return tiles.delete(tileKey(x, y))
 }
 
+/**
+ * 塗りつぶし。(x, y) と上下左右につながるマスを塗り、変更したマスの数を返す
+ * - タイルのマス: 同じ色でつながるタイルを、形状を保ったまま指定した色に置き換える
+ * - 空のマス: つながる空のマスに、指定した色と形状のタイルを設置する
+ * - `size` の範囲外は塗らない
+ */
+export function fillTiles(
+  tiles: TileMap,
+  size: { readonly width: number; readonly height: number },
+  x: number,
+  y: number,
+  color: string,
+  shape: Shape = Shape.Square,
+): number {
+  if (!isInside(size, x, y)) return 0
+  /** 塗る対象の色。空のマスを塗る場合は undefined */
+  const target = tiles.get(tileKey(x, y))?.color
+  if (target === color) return 0
+  // 塗ったマスは対象から外れるため、塗ったかどうかを別に記録しなくてよい
+  const matches = (cx: number, cy: number): boolean =>
+    isInside(size, cx, cy) && tiles.get(tileKey(cx, cy))?.color === target
+  const fill = (cx: number, cy: number): void => {
+    const key = tileKey(cx, cy)
+    const current = tiles.get(key)
+    tiles.set(key, current ? { ...current, color } : { x: cx, y: cy, color, shape })
+  }
+
+  // 横方向の連続したマスをまとめて塗り、上下の行の連続したマスごとに 1 つずつ起点を積む
+  let count = 0
+  const stack: number[] = [x, y]
+  while (stack.length > 0) {
+    const cy = stack.pop()!
+    const cx = stack.pop()!
+    if (!matches(cx, cy)) continue
+    let left = cx
+    while (matches(left - 1, cy)) left--
+    let right = cx
+    while (matches(right + 1, cy)) right++
+    for (let ix = left; ix <= right; ix++) fill(ix, cy)
+    count += right - left + 1
+    for (const ny of [cy - 1, cy + 1]) {
+      let inRun = false
+      for (let ix = left; ix <= right; ix++) {
+        const match = matches(ix, ny)
+        if (match && !inRun) stack.push(ix, ny)
+        inRun = match
+      }
+    }
+  }
+  return count
+}
+
 export function getTile(tiles: TileMap, x: number, y: number): Tile | undefined {
   return tiles.get(tileKey(x, y))
 }

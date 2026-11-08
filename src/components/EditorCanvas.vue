@@ -4,7 +4,7 @@ import { DEFAULT_TILE_SIZE, TILE_SIZES } from '../model/constants'
 import { isInside, lineCells } from '../model/document'
 import type { Tool } from '../model/tools'
 import type { Cell } from '../model/types'
-import { PIPETTE_CURSOR } from '../render/cursors'
+import { PAINT_BUCKET_CURSOR, PIPETTE_CURSOR } from '../render/cursors'
 import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker, type CellRange } from '../render/drawTiles'
 import { editor } from '../store/editor'
 import { isEditableTarget } from '../utils/dom'
@@ -97,6 +97,8 @@ const cursor = computed(() => {
       return gesture.value ? 'grabbing' : 'grab'
     case 'pick':
       return PIPETTE_CURSOR
+    case 'fill':
+      return editable.value ? PAINT_BUCKET_CURSOR : 'not-allowed'
     case 'move':
       return editable.value ? 'move' : 'not-allowed'
     default:
@@ -382,6 +384,12 @@ function onPointerDown(event: PointerEvent) {
   if (tool === 'pick') {
     // Pick ツールで拾った場合は Draw に戻る。Alt キーによる一時的な切り替えではツールを変えない
     if (editor.pickAt(cell.x, cell.y) && activeTool.value === 'pick') editor.selectTool('draw')
+    event.preventDefault()
+    return
+  }
+  if (tool === 'fill') {
+    // 1 回のクリックで完結するため、ドラッグは扱わない
+    editor.fillAt(cell.x, cell.y)
     event.preventDefault()
     return
   }

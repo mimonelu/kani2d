@@ -1,7 +1,7 @@
 import { IS_MAC } from '../utils/platform'
 
 /** 左クリック・左ドラッグの操作 */
-export type Tool = 'draw' | 'erase' | 'pick' | 'move' | 'pan'
+export type Tool = 'draw' | 'erase' | 'fill' | 'pick' | 'move' | 'pan'
 
 export interface ToolInfo {
   tool: Tool
@@ -21,6 +21,7 @@ export const DEFAULT_TOOL: Tool = 'draw'
 export const TOOLS: readonly ToolInfo[] = [
   { tool: 'draw', label: 'Draw', code: 'KeyB', key: 'B' },
   { tool: 'erase', label: 'Erase', code: 'KeyE', key: 'E', alternative: 'Right click' },
+  { tool: 'fill', label: 'Fill', code: 'KeyG', key: 'G' },
   {
     tool: 'pick',
     label: 'Pick shape and color',

@@ -5,6 +5,7 @@ describe('tools', () => {
   it('maps physical keys to tools', () => {
     expect(toolForKeyCode('KeyB')).toBe('draw')
     expect(toolForKeyCode('KeyE')).toBe('erase')
+    expect(toolForKeyCode('KeyG')).toBe('fill')
     expect(toolForKeyCode('KeyI')).toBe('pick')
     expect(toolForKeyCode('KeyV')).toBe('move')
     expect(toolForKeyCode('KeyH')).toBe('pan')
@@ -15,6 +16,7 @@ describe('tools', () => {
     expect(TOOLS.map((info) => toolTitle(info, false))).toEqual([
       'Draw (B)',
       'Erase (E / Right click)',
+      'Fill (G)',
       'Pick shape and color (I / Alt+click)',
       'Move layer (V / Ctrl+drag)',
       'Pan (H / Space+drag)',
@@ -22,6 +24,7 @@ describe('tools', () => {
     expect(TOOLS.map((info) => toolTitle(info, true))).toEqual([
       'Draw (B)',
       'Erase (E / Right click)',
+      'Fill (G)',
       'Pick shape and color (I / Option+click)',
       'Move layer (V / ⌘+drag)',
       'Pan (H / Space+drag)',
@@ -31,6 +34,7 @@ describe('tools', () => {
   it('validates tools', () => {
     expect(isTool('pan')).toBe(true)
     expect(isTool('move')).toBe(true)
-    expect(isTool('fill')).toBe(false)
+    expect(isTool('fill')).toBe(true)
+    expect(isTool('bucket')).toBe(false)
   })
 })

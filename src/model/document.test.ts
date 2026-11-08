@@ -9,6 +9,7 @@ import {
   deleteLayer,
   duplicateLayer,
   eraseTile,
+  fillTiles,
   getTile,
   hasTiles,
   lineCells,
@@ -24,6 +25,29 @@ import {
   trimDocument,
 } from './document'
 import { Shape, type TileMap } from './types'
+
+/** 1 文字を 1 マスとする文字列からタイルを作る。`.` は空のマス */
+const LETTER_COLORS: Record<string, string> = { R: '#FF0000', B: '#0000FF', W: '#FFFFFF' }
+
+function tilesFromRows(rows: readonly string[]): TileMap {
+  const tiles: TileMap = new Map()
+  rows.forEach((row, y) => {
+    ;[...row].forEach((letter, x) => {
+      if (letter !== '.') paintTile(tiles, x, y, LETTER_COLORS[letter]!)
+    })
+  })
+  return tiles
+}
+
+function rowsFromTiles(tiles: TileMap, width: number, height: number): string[] {
+  const letters = new Map(Object.entries(LETTER_COLORS).map(([letter, color]) => [color, letter]))
+  return Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => {
+      const tile = getTile(tiles, x, y)
+      return tile ? letters.get(tile.color)! : '.'
+    }).join(''),
+  )
+}
 
 describe('document', () => {
   it('creates a 32x32 document with only the background layer', () => {
@@ -220,6 +244,93 @@ describe('document', () => {
     paintTile(tiles, 0, 0, '#FF0000')
     expect(eraseTile(tiles, 0, 0)).toBe(true)
     expect(eraseTile(tiles, 0, 0)).toBe(false)
+  })
+
+  it('fills tiles of the same color connected vertically and horizontally', () => {
+    const tiles = tilesFromRows([
+      'RRB.R', //
+      '.RBRB',
+      'R.R..',
+      'RRR.R',
+    ])
+    rotateTile(tiles, 1, 0)
+    const size = { width: 5, height: 4 }
+    expect(fillTiles(tiles, size, 0, 0, '#FFFFFF', Shape.TopLeft)).toBe(3)
+    // 斜めにのみ接するタイルや異なる色のタイルは塗らない
+    expect(rowsFromTiles(tiles, 5, 4)).toEqual([
+      'WWB.R', //
+      '.WBRB',
+      'R.R..',
+      'RRR.R',
+    ])
+    // 形状は保つ
+    expect(getTile(tiles, 1, 0)?.shape).toBe(Shape.BottomRight)
+    expect(getTile(tiles, 0, 0)?.shape).toBe(Shape.Square)
+    expect(fillTiles(tiles, size, 2, 2, '#0000FF')).toBe(5)
+    expect(rowsFromTiles(tiles, 5, 4)).toEqual([
+      'WWB.R', //
+      '.WBRB',
+      'B.B..',
+      'BBB.R',
+    ])
+  })
+
+  it('fills connected empty cells with the given color and shape', () => {
+    const tiles = tilesFromRows([
+      '..R..', //
+      'RRR.R',
+      '...R.',
+      '.R.R.',
+    ])
+    const size = { width: 5, height: 4 }
+    expect(fillTiles(tiles, size, 4, 0, '#0000FF', Shape.TopRight)).toBe(3)
+    // キャンバスの範囲外や、斜めにのみ接する空のマスには広げない
+    expect(rowsFromTiles(tiles, 5, 4)).toEqual([
+      '..RBB', //
+      'RRRBR',
+      '...R.',
+      '.R.R.',
+    ])
+    expect(getTile(tiles, 4, 0)).toEqual({ x: 4, y: 0, color: '#0000FF', shape: Shape.TopRight })
+    expect(fillTiles(tiles, size, 0, 3, '#0000FF')).toBe(5)
+    expect(rowsFromTiles(tiles, 5, 4)).toEqual([
+      '..RBB', //
+      'RRRBR',
+      'BBBR.',
+      'BRBR.',
+    ])
+  })
+
+  it('fills regions that wind back and forth', () => {
+    const tiles = tilesFromRows([
+      '.......', //
+      '.RRRRR.',
+      '.R...R.',
+      '.R.R.R.',
+      '.R.RRR.',
+      '.R.....',
+      '.RRRRRR',
+    ])
+    const size = { width: 7, height: 7 }
+    expect(fillTiles(tiles, size, 4, 3, '#FFFFFF')).toBe(28)
+    expect(rowsFromTiles(tiles, 7, 7)).toEqual([
+      'WWWWWWW', //
+      'WRRRRRW',
+      'WRWWWRW',
+      'WRWRWRW',
+      'WRWRRRW',
+      'WRWWWWW',
+      'WRRRRRR',
+    ])
+  })
+
+  it('does not fill when nothing changes', () => {
+    const tiles = tilesFromRows(['RR'])
+    const size = { width: 2, height: 1 }
+    expect(fillTiles(tiles, size, 0, 0, '#FF0000')).toBe(0)
+    expect(fillTiles(tiles, size, 2, 0, '#0000FF')).toBe(0)
+    expect(fillTiles(tiles, size, -1, 0, '#0000FF')).toBe(0)
+    expect(rowsFromTiles(tiles, 2, 1)).toEqual(['RR'])
   })
 
   it('returns connected cells between two points excluding the start', () => {

@@ -6,6 +6,7 @@ import {
   deleteLayer as deleteLayerFromDoc,
   duplicateLayer as duplicateLayerInDoc,
   eraseTile,
+  fillTiles,
   getTile,
   hasTiles,
   isInside,
@@ -234,6 +235,25 @@ export function createEditorStore() {
     return false
   }
 
+  /**
+   * 塗りつぶし。1 回のクリックを 1 件の履歴とする
+   * - 非表示のレイヤーは編集結果が見えないため編集できない
+   * - 変更が無い場合は false を返す
+   */
+  function fillAt(x: number, y: number): boolean {
+    if (stroke || !activeLayer.value.visible || !isInside(doc.value, x, y)) return false
+    // レイヤーの複製を避けるため、変更が無いことが明らかな場合は先に返す
+    if (tileAt(x, y)?.color === selectedColor.value) return false
+    const index = activeIndex.value
+    const source = doc.value.layers[index]!
+    const tiles = new Map(source.tiles)
+    if (fillTiles(tiles, doc.value, x, y, selectedColor.value, selectedShape.value) === 0) return false
+    const layers = [...doc.value.layers]
+    layers[index] = { ...source, tiles }
+    commit({ ...doc.value, layers })
+    return true
+  }
+
   function tileAt(x: number, y: number): Tile | undefined {
     return getTile(activeLayer.value.tiles, x, y)
   }
@@ -382,6 +402,7 @@ export function createEditorStore() {
     selectShape,
     selectTool,
     pickAt,
+    fillAt,
     tileAt,
     beginStroke,
     paintAt,

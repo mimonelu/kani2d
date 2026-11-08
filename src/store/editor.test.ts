@@ -118,6 +118,54 @@ describe('editor store', () => {
     expect(store.doc.value).toBe(before)
   })
 
+  it('fills the active layer as one history entry', () => {
+    const store = createEditorStore()
+    store.newDocument(undefined, 3, 2)
+    store.selectColor('#FF0000')
+    store.beginStroke()
+    store.paintAt(1, 0)
+    store.paintAt(1, 1)
+    store.endStroke()
+    // 他のレイヤーのタイルは境界にならない
+    store.addLayer()
+    store.beginStroke()
+    store.paintAt(2, 0)
+    store.endStroke()
+    store.setActiveLayer(store.doc.value.layers[0]!.id)
+
+    store.selectColor('#0000FF')
+    store.selectShape(Shape.TopLeft)
+    expect(store.fillAt(2, 1)).toBe(true)
+    const background = () => store.activeLayer.value.tiles
+    expect(background().size).toBe(4)
+    expect(store.tileAt(2, 0)).toEqual({ x: 2, y: 0, color: '#0000FF', shape: Shape.TopLeft })
+    expect(store.tileAt(0, 0)).toBeUndefined()
+    expect(store.doc.value.layers[1]!.tiles.size).toBe(1)
+
+    // 同じ色でつながるタイルを置き換える
+    store.selectColor('#00FF00')
+    expect(store.fillAt(1, 1)).toBe(true)
+    expect(store.tileAt(1, 0)?.color).toBe('#00FF00')
+    expect(store.tileAt(2, 0)?.color).toBe('#0000FF')
+
+    store.undo()
+    expect(store.tileAt(1, 0)?.color).toBe('#FF0000')
+    store.undo()
+    expect(background().size).toBe(2)
+
+    // 変更が無い場合や範囲外は履歴に積まない
+    const before = store.doc.value
+    store.selectColor('#FF0000')
+    expect(store.fillAt(1, 0)).toBe(false)
+    expect(store.fillAt(3, 0)).toBe(false)
+    expect(store.doc.value).toBe(before)
+
+    // 非表示のレイヤーは編集できない
+    store.toggleLayerVisibility(store.activeLayerId.value)
+    expect(store.fillAt(0, 0)).toBe(false)
+    expect(store.tileAt(0, 0)).toBeUndefined()
+  })
+
   it('picks only the shape when the color is not in the palette', () => {
     const store = createEditorStore()
     store.loadFile(
@@ -139,7 +187,7 @@ describe('editor store', () => {
     const store = createEditorStore()
     expect(store.activeTool.value).toBe('draw')
     store.selectTool('pan')
-    store.selectTool('fill' as never)
+    store.selectTool('bucket' as never)
     expect(store.activeTool.value).toBe('pan')
     expect(store.exportState()).not.toHaveProperty('tool')
     store.newDocument()

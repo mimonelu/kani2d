@@ -17,9 +17,16 @@ import { toolForKeyCode } from './model/tools'
 import { editor } from './store/editor'
 import { isEditableTarget } from './utils/dom'
 import { downloadBlob } from './utils/download'
-import { pickSaveFile, supportsSaveFilePicker, writeFile } from './utils/fileSave'
+import {
+  pickOpenFile,
+  pickSaveFile,
+  supportsOpenFilePicker,
+  supportsSaveFilePicker,
+  writeFile,
+} from './utils/fileAccess'
 
 const FILE_MIME_TYPE = 'application/json'
+const FILE_DESCRIPTION = 'Kani2D file'
 
 interface Dialog {
   title: string
@@ -44,15 +51,15 @@ const modalOpen = computed(
   () => showNew.value || showResize.value || showExport.value || showSaveAs.value || dialog.value !== null,
 )
 
-/** ファイル保存ダイアログで選ばれたファイル。以降のセーブはこのファイルに上書きする */
+/** ロードしたファイル、またはファイル保存ダイアログで選ばれたファイル。以降のセーブはこのファイルに上書きする */
 let saveHandle: FileSystemFileHandle | null = null
 /** 新規作成・ロードで増える。非同期のセーブ中にドキュメントが置き換わったかの判定に使う */
 let session = 0
 
 /** 新規作成・ロードでドキュメントを置き換えた後に呼ぶ */
-function startSession() {
+function startSession(handle: FileSystemFileHandle | null = null) {
   session++
-  saveHandle = null
+  saveHandle = handle
 }
 
 /** ファイルへの未保存の変更があれば破棄してよいか確認してから実行する */
@@ -90,8 +97,41 @@ function onCreate(name: string | undefined, width: number, height: number) {
   startSession()
 }
 
+/**
+ * - ファイル選択ダイアログに対応するブラウザでは、選んだファイルを以降のセーブで上書きできるよう、ダイアログで開く
+ * - 非対応のブラウザではファイル入力で開く
+ */
 function onLoad() {
-  confirmDiscard(() => fileInput.value?.click())
+  confirmDiscard(() => {
+    if (supportsOpenFilePicker()) {
+      void loadWithPicker()
+    } else {
+      fileInput.value?.click()
+    }
+  })
+}
+
+/** ファイルを読み込む。handle を渡した場合は、以降のセーブでそのファイルに上書きする */
+async function loadFile(file: File, handle: FileSystemFileHandle | null) {
+  editor.loadFile(await file.text(), file.name)
+  startSession(handle)
+}
+
+function showLoadError(error: unknown) {
+  dialog.value = {
+    title: 'Failed to load the file',
+    message: error instanceof FileFormatError ? error.message : 'The file could not be read.',
+  }
+}
+
+async function loadWithPicker() {
+  try {
+    // ダイアログはユーザー操作の中で開く必要があるため、await より前に呼び出す
+    const handle = await pickOpenFile(FILE_DESCRIPTION, FILE_MIME_TYPE, FILE_EXTENSION)
+    if (handle) await loadFile(await handle.getFile(), handle)
+  } catch (error) {
+    showLoadError(error)
+  }
 }
 
 async function onFileChosen(event: Event) {
@@ -100,13 +140,9 @@ async function onFileChosen(event: Event) {
   input.value = ''
   if (!file) return
   try {
-    editor.loadFile(await file.text(), file.name)
-    startSession()
+    await loadFile(file, null)
   } catch (error) {
-    dialog.value = {
-      title: 'Failed to load the file',
-      message: error instanceof FileFormatError ? error.message : 'The file could not be read.',
-    }
+    showLoadError(error)
   }
 }
 
@@ -114,32 +150,41 @@ function createFileBlob(): Blob {
   return new Blob([editor.serialize()], { type: FILE_MIME_TYPE })
 }
 
+function downloadFile(name: string) {
+  downloadBlob(createFileBlob(), `${name}${FILE_EXTENSION}`)
+  editor.markSaved()
+}
+
 /**
- * - ファイル保存ダイアログで選んだファイルがあれば、そのファイルに上書きする
- * - ファイル名があればダウンロードする
- * - ファイル名が無ければファイル保存ダイアログを開く。非対応のブラウザではアプリ内のモーダルでファイル名を入力させる
+ * - 保存先のファイルがあれば、そのファイルに上書きする
+ * - 保存先が無ければファイル保存ダイアログを開き、選んだファイルを保存先とする
+ * - ファイル保存ダイアログに非対応のブラウザでは、ダウンロードする（既存のファイルは上書きできない）。ファイル名が無ければアプリ内のモーダルで入力させる
  */
 async function onSave() {
   if (saving.value) return
-  if (!saveHandle && docName.value === undefined && !supportsSaveFilePicker()) {
-    showSaveAs.value = true
+  if (!saveHandle && !supportsSaveFilePicker()) {
+    if (docName.value === undefined) {
+      showSaveAs.value = true
+    } else {
+      downloadFile(docName.value)
+    }
     return
   }
   // 保存処理中の編集を未保存の変更として扱うため、この時点のドキュメントを記録する
   const savingDoc = editor.doc.value
   const blob = createFileBlob()
   const current = session
+  const target = saveHandle
   saving.value = true
   try {
-    if (saveHandle) {
-      await writeFile(saveHandle, blob)
-    } else if (docName.value !== undefined) {
-      downloadBlob(blob, `${docName.value}${FILE_EXTENSION}`)
+    if (target) {
+      // 書き込みの許可を求める場合があるため、await より前に呼び出す
+      await writeFile(target, blob)
     } else {
       // ダイアログはユーザー操作の中で開く必要があるため、await より前に呼び出す
       const handle = await pickSaveFile(
-        `${FALLBACK_FILE_NAME}${FILE_EXTENSION}`,
-        'Kani2D file',
+        `${docName.value ?? FALLBACK_FILE_NAME}${FILE_EXTENSION}`,
+        FILE_DESCRIPTION,
         FILE_MIME_TYPE,
         FILE_EXTENSION,
       )
@@ -151,9 +196,13 @@ async function onSave() {
     }
     if (current === session) editor.markSaved(savingDoc)
   } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : 'The file could not be saved.'
+    // 書き込みの許可が得られない場合などに備え、次回のセーブではファイル保存ダイアログで保存先を選び直せるようにする
+    const retarget = target !== null && current === session
+    if (retarget) saveHandle = null
     dialog.value = {
       title: 'Failed to save the file',
-      message: error instanceof Error && error.message ? error.message : 'The file could not be saved.',
+      message: retarget ? `${message} Save again to choose where to save it.` : message,
     }
   } finally {
     saving.value = false
@@ -163,8 +212,7 @@ async function onSave() {
 function onSaveAs(name: string) {
   showSaveAs.value = false
   editor.setDocName(name)
-  downloadBlob(createFileBlob(), `${name}${FILE_EXTENSION}`)
-  editor.markSaved()
+  downloadFile(name)
 }
 
 function onKeyDown(event: KeyboardEvent) {

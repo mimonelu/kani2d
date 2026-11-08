@@ -14,6 +14,7 @@ import {
   paintTile,
   parseCanvasSize,
   resizeDocument,
+  resizeOffset,
   rotateTile,
   setLayerVisible,
 } from './document'
@@ -110,6 +111,30 @@ describe('document', () => {
     expect(getTile(back.layers[0]!.tiles, 3, 3)?.color).toBe('#00FF00')
     const shrunk = resizeDocument(doc, 3, 3)
     expect([...shrunk.layers[0]!.tiles.keys()]).toEqual(['0,0'])
+  })
+
+  it('resizes around the anchor', () => {
+    expect(resizeOffset(4, 7, 0)).toBe(0)
+    expect(resizeOffset(4, 7, 0.5)).toBe(1)
+    expect(resizeOffset(4, 7, 1)).toBe(3)
+    expect(resizeOffset(4, 1, 0)).toBe(0)
+    expect(resizeOffset(4, 3, 0.5)).toBe(0)
+    expect(resizeOffset(4, 1, 1)).toBe(-3)
+
+    const doc = createDocument(4, 4)
+    paintTile(doc.layers[0]!.tiles, 0, 0, '#FF0000')
+    paintTile(doc.layers[0]!.tiles, 3, 3, '#00FF00')
+    const grown = resizeDocument(doc, 6, 5, { x: 1, y: 0 })
+    expect(getTile(grown.layers[0]!.tiles, 2, 0)?.color).toBe('#FF0000')
+    expect(getTile(grown.layers[0]!.tiles, 5, 3)?.color).toBe('#00FF00')
+
+    expect(countTilesRemovedByResize(doc, 2, 2, { x: 0, y: 0 })).toBe(1)
+    const topLeft = resizeDocument(doc, 2, 2, { x: 0, y: 0 })
+    expect([...topLeft.layers[0]!.tiles.keys()]).toEqual(['0,0'])
+    const bottomRight = resizeDocument(doc, 2, 2, { x: 1, y: 1 })
+    expect([...bottomRight.layers[0]!.tiles.keys()]).toEqual(['1,1'])
+    const bottom = resizeDocument(doc, 4, 1, { x: 0.5, y: 1 })
+    expect([...bottom.layers[0]!.tiles.keys()]).toEqual(['3,0'])
   })
 
   it('toggles layer visibility and keeps it when duplicating', () => {

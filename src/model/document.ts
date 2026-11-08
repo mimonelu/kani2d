@@ -1,10 +1,22 @@
 import {
   BACKGROUND_LAYER_NAME,
+  CENTER_ANCHOR,
   COPY_SUFFIX,
   DEFAULT_CANVAS_SIZE,
   LAYER_NAME_PREFIX,
 } from './constants'
-import { SHAPE_COUNT, SHAPE_ORDER, Shape, type Cell, type Doc, type Layer, type Tile, type TileMap } from './types'
+import {
+  SHAPE_COUNT,
+  SHAPE_ORDER,
+  Shape,
+  type AnchorPosition,
+  type Cell,
+  type Doc,
+  type Layer,
+  type ResizeAnchor,
+  type Tile,
+  type TileMap,
+} from './types'
 
 let layerIdCounter = 0
 
@@ -110,20 +122,25 @@ export function setLayerVisible(doc: Doc, index: number, visible: boolean): Doc 
 }
 
 /**
- * 中心を基準にリサイズした際のタイルの移動量を返す
- * - 差が奇数の場合、端数の 1 マスは右（下）側で増減する。拡大と縮小で同じ側になるため、元のサイズに戻すと元の位置に戻る
+ * 基準位置を保ってリサイズした際のタイルの移動量を返す
+ * - 左（上）基準では右（下）側で、右（下）基準では左（上）側で増減する
+ * - 中央基準で差が奇数の場合、端数の 1 マスは右（下）側で増減する。拡大と縮小で同じ側になるため、元のサイズに戻すと元の位置に戻る
  */
-export function resizeOffset(from: number, to: number): number {
-  return Math.trunc((to - from) / 2)
+export function resizeOffset(from: number, to: number, anchor: AnchorPosition = 0.5): number {
+  const diff = to - from
+  if (anchor === 0) return 0
+  if (anchor === 1) return diff
+  // Math.trunc は -0 を返すことがあるため 0 にそろえる
+  return Math.trunc(diff / 2) || 0
 }
 
-/** 中心を基準にリサイズし、範囲外となるタイルを削除する */
-export function resizeDocument(doc: Doc, width: number, height: number): Doc {
+/** 基準位置を保ってリサイズし、範囲外となるタイルを削除する */
+export function resizeDocument(doc: Doc, width: number, height: number, anchor: ResizeAnchor = CENTER_ANCHOR): Doc {
   if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
-  const dx = resizeOffset(doc.width, width)
-  const dy = resizeOffset(doc.height, height)
+  const dx = resizeOffset(doc.width, width, anchor.x)
+  const dy = resizeOffset(doc.height, height, anchor.y)
   const layers = doc.layers.map((layer) => {
     const tiles: TileMap = new Map()
     for (const tile of layer.tiles.values()) {
@@ -138,9 +155,14 @@ export function resizeDocument(doc: Doc, width: number, height: number): Doc {
 }
 
 /** リサイズで範囲外となるタイルの数を返す */
-export function countTilesRemovedByResize(doc: Doc, width: number, height: number): number {
-  const dx = resizeOffset(doc.width, width)
-  const dy = resizeOffset(doc.height, height)
+export function countTilesRemovedByResize(
+  doc: Doc,
+  width: number,
+  height: number,
+  anchor: ResizeAnchor = CENTER_ANCHOR,
+): number {
+  const dx = resizeOffset(doc.width, width, anchor.x)
+  const dy = resizeOffset(doc.height, height, anchor.y)
   let count = 0
   for (const layer of doc.layers) {
     for (const tile of layer.tiles.values()) {

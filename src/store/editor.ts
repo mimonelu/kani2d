@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef } from 'vue'
-import { DEFAULT_CANVAS_SIZE, HISTORY_LIMIT } from '../model/constants'
+import { CENTER_ANCHOR, DEFAULT_CANVAS_SIZE, HISTORY_LIMIT } from '../model/constants'
 import {
   addLayer as addLayerToDoc,
   createDocument,
@@ -20,7 +20,7 @@ import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
 import { History } from '../model/history'
 import { DEFAULT_COLOR, PALETTE } from '../model/palette'
 import { DEFAULT_TOOL, isTool, type Tool } from '../model/tools'
-import { Shape, type Doc, type Layer, type Tile } from '../model/types'
+import { Shape, type Doc, type Layer, type ResizeAnchor, type Tile } from '../model/types'
 
 interface Snapshot {
   doc: Doc
@@ -187,9 +187,9 @@ export function createEditorStore() {
     commit(moveLayerInDoc(doc.value, from, to))
   }
 
-  function resize(width: number, height: number): void {
+  function resize(width: number, height: number, anchor: ResizeAnchor = CENTER_ANCHOR): void {
     if (width === doc.value.width && height === doc.value.height) return
-    commit(resizeDocument(doc.value, width, height))
+    commit(resizeDocument(doc.value, width, height, anchor))
   }
 
   function selectColor(color: string): void {

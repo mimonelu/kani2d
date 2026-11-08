@@ -229,6 +229,11 @@ describe('editor store', () => {
     store.undo()
     expect(store.doc.value.width).toBe(4)
     expect(store.tileAt(1, 1)).toBeDefined()
+
+    store.resize(6, 6, { x: 1, y: 1 })
+    expect(store.tileAt(3, 3)).toBeDefined()
+    store.undo()
+    expect(store.tileAt(1, 1)).toBeDefined()
   })
 
   it('loads files and clears history', () => {

@@ -1,3 +1,5 @@
+import type { ResizeAnchor } from './types'
+
 export const APP_NAME = 'Kani2D'
 
 export const BACKGROUND_LAYER_NAME = 'Background'
@@ -22,3 +24,6 @@ export const TILE_SIZES: readonly number[] = [4, 6, 8, 12, 16, 24, 32, 48, 64, 9
 export const DEFAULT_EXPORT_TILE_SIZE = 32
 /** ブラウザの Canvas の上限を考慮した出力画像の最大辺 */
 export const MAX_EXPORT_DIMENSION = 16384
+
+/** リサイズの基準位置の初期値（中央） */
+export const CENTER_ANCHOR: ResizeAnchor = { x: 0.5, y: 0.5 }

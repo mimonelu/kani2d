@@ -20,7 +20,7 @@ describe('fileFormat', () => {
       height: 4,
       layers: [
         { name: 'Background', visible: true, tiles: [[1, 2, '#FF0000', 0]] },
-        { name: 'Layer 1', visible: false, tiles: [[7, 3, '#0040C0', 1]] },
+        { name: 'Layer 1', visible: false, tiles: [[7, 3, '#0040C0', 3]] },
       ],
     })
   })

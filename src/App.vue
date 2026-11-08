@@ -9,6 +9,7 @@ import LayerList from './components/LayerList.vue'
 import NewModal from './components/NewModal.vue'
 import ResizeModal from './components/ResizeModal.vue'
 import SaveAsModal from './components/SaveAsModal.vue'
+import ShapePicker from './components/ShapePicker.vue'
 import { FALLBACK_FILE_NAME, FILE_EXTENSION } from './model/constants'
 import { FileFormatError, normalizeFileName } from './model/fileFormat'
 import { editor } from './store/editor'
@@ -199,6 +200,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
       <EditorCanvas class="workspace__canvas" :locked="modalOpen" />
       <aside class="workspace__sidebar">
         <LayerList />
+        <ShapePicker />
         <ColorPalette />
       </aside>
     </main>

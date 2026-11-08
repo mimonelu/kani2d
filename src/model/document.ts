@@ -4,7 +4,7 @@ import {
   DEFAULT_CANVAS_SIZE,
   LAYER_NAME_PREFIX,
 } from './constants'
-import { SHAPE_COUNT, Shape, type Cell, type Doc, type Layer, type Tile, type TileMap } from './types'
+import { SHAPE_COUNT, SHAPE_ORDER, Shape, type Cell, type Doc, type Layer, type Tile, type TileMap } from './types'
 
 let layerIdCounter = 0
 
@@ -150,18 +150,29 @@ export function countTilesRemovedByResize(doc: Doc, width: number, height: numbe
   return count
 }
 
+export function isShape(value: unknown): value is Shape {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < SHAPE_COUNT
+}
+
+/** `SHAPE_ORDER` の順で次の形状を返す */
 export function nextShape(shape: Shape): Shape {
-  return ((shape + 1) % SHAPE_COUNT) as Shape
+  return SHAPE_ORDER[(SHAPE_ORDER.indexOf(shape) + 1) % SHAPE_ORDER.length]!
 }
 
 export type PaintResult = 'placed' | 'recolored' | 'unchanged'
 
-/** 空なら四角を設置し、異なる色なら形状を保ったまま色を置き換える */
-export function paintTile(tiles: TileMap, x: number, y: number, color: string): PaintResult {
+/** 空なら指定した形状のタイルを設置し、異なる色なら形状を保ったまま色を置き換える */
+export function paintTile(
+  tiles: TileMap,
+  x: number,
+  y: number,
+  color: string,
+  shape: Shape = Shape.Square,
+): PaintResult {
   const key = tileKey(x, y)
   const current = tiles.get(key)
   if (!current) {
-    tiles.set(key, { x, y, color, shape: Shape.Square })
+    tiles.set(key, { x, y, color, shape })
     return 'placed'
   }
   if (current.color === color) return 'unchanged'

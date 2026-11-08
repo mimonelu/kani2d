@@ -1,7 +1,7 @@
 import { BACKGROUND_LAYER_NAME, FILE_EXTENSION, FILE_FORMAT_ID, FILE_FORMAT_VERSION } from './constants'
-import { createLayer, isValidCanvasSize, tileKey } from './document'
+import { createLayer, isShape, isValidCanvasSize, tileKey } from './document'
 import { COLOR_PATTERN } from './palette'
-import { SHAPE_COUNT, type Doc, type Shape, type TileMap } from './types'
+import type { Doc, Shape, TileMap } from './types'
 
 /** `[x, y, 色, 形状]` */
 export type SerializedTile = [number, number, string, Shape]
@@ -78,12 +78,12 @@ function parseTiles(value: unknown, width: number, height: number, layerIndex: n
     if (!COLOR_PATTERN.test(color)) {
       throw new FileFormatError(`Layer ${layerIndex + 1} contains a tile with an invalid color.`)
     }
-    if (!isInteger(shape) || shape < 0 || shape >= SHAPE_COUNT) {
+    if (!isShape(shape)) {
       throw new FileFormatError(`Layer ${layerIndex + 1} contains a tile with an invalid shape.`)
     }
     // キャンバス範囲外のタイルは無視する
     if (x < 0 || y < 0 || x >= width || y >= height) continue
-    tiles.set(tileKey(x, y), { x, y, color, shape: shape as Shape })
+    tiles.set(tileKey(x, y), { x, y, color, shape })
   }
   return tiles
 }

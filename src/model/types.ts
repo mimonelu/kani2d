@@ -11,6 +11,15 @@ export type Shape = (typeof Shape)[keyof typeof Shape]
 
 export const SHAPE_COUNT = 5
 
+/** ローテーションと形状の選択の並び順 */
+export const SHAPE_ORDER: readonly Shape[] = [
+  Shape.Square,
+  Shape.BottomRight,
+  Shape.BottomLeft,
+  Shape.TopLeft,
+  Shape.TopRight,
+]
+
 export interface Tile {
   readonly x: number
   readonly y: number

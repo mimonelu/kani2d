@@ -37,7 +37,7 @@ export async function setupAutosave(store: EditorStore): Promise<void> {
   }
 
   watch(
-    [store.doc, store.revision, store.docName, store.isDirty, store.selectedColor, store.activeLayerId],
+    [store.doc, store.revision, store.docName, store.isDirty, store.selectedColor, store.selectedShape, store.activeLayerId],
     () => {
       if (timer !== null) clearTimeout(timer)
       timer = setTimeout(save, AUTOSAVE_DELAY)

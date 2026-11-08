@@ -130,11 +130,16 @@ describe('document', () => {
     rotateTile(tiles, 0, 0)
     expect(paintTile(tiles, 0, 0, '#FF0000')).toBe('unchanged')
     expect(paintTile(tiles, 0, 0, '#00FF00')).toBe('recolored')
-    expect(getTile(tiles, 0, 0)).toEqual({ x: 0, y: 0, color: '#00FF00', shape: Shape.TopLeft })
+    expect(getTile(tiles, 0, 0)).toEqual({ x: 0, y: 0, color: '#00FF00', shape: Shape.BottomRight })
+    expect(paintTile(tiles, 1, 0, '#FF0000', Shape.BottomLeft)).toBe('placed')
+    expect(getTile(tiles, 1, 0)?.shape).toBe(Shape.BottomLeft)
+    // 既存のタイルの形状は変えない
+    expect(paintTile(tiles, 0, 0, '#FF0000', Shape.BottomLeft)).toBe('recolored')
+    expect(getTile(tiles, 0, 0)?.shape).toBe(Shape.BottomRight)
   })
 
   it('rotates shapes clockwise starting from the square', () => {
-    const order = [Shape.Square, Shape.TopLeft, Shape.TopRight, Shape.BottomRight, Shape.BottomLeft]
+    const order = [Shape.Square, Shape.BottomRight, Shape.BottomLeft, Shape.TopLeft, Shape.TopRight]
     order.forEach((shape, i) => expect(nextShape(shape)).toBe(order[(i + 1) % order.length]))
     expect(rotateTile(new Map(), 0, 0)).toBe(false)
   })

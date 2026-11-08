@@ -41,9 +41,41 @@ describe('editor store', () => {
     store.beginStroke()
     store.rotateAt(0, 0)
     store.endStroke()
-    expect(store.tileAt(0, 0)?.shape).toBe(Shape.TopLeft)
+    expect(store.tileAt(0, 0)?.shape).toBe(Shape.BottomRight)
     store.undo()
     expect(store.tileAt(0, 0)?.shape).toBe(Shape.Square)
+  })
+
+  it('places tiles in the selected shape on empty cells', () => {
+    const store = createEditorStore()
+    expect(store.selectedShape.value).toBe(Shape.Square)
+    store.selectShape(Shape.TopRight)
+    store.selectShape(9 as Shape)
+    expect(store.selectedShape.value).toBe(Shape.TopRight)
+
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.paintAt(1, 0)
+    store.endStroke()
+    expect(store.tileAt(0, 0)?.shape).toBe(Shape.TopRight)
+    expect(store.tileAt(1, 0)?.shape).toBe(Shape.TopRight)
+
+    // ローテーションと色の置き換えでは選択中の形状を変えない
+    store.beginStroke()
+    store.rotateAt(0, 0)
+    store.endStroke()
+    expect(store.tileAt(0, 0)?.shape).toBe(Shape.Square)
+    store.selectShape(Shape.BottomLeft)
+    store.selectColor('#FF0000')
+    store.beginStroke()
+    store.paintAt(1, 0)
+    store.endStroke()
+    expect(store.tileAt(1, 0)).toMatchObject({ color: '#FF0000', shape: Shape.TopRight })
+    expect(store.selectedShape.value).toBe(Shape.BottomLeft)
+
+    // 新規作成では選択中の形状を維持する
+    store.newDocument()
+    expect(store.selectedShape.value).toBe(Shape.BottomLeft)
   })
 
   it('edits only the active layer', () => {
@@ -156,6 +188,7 @@ describe('editor store', () => {
     source.beginStroke()
     source.paintAt(1, 1)
     source.endStroke()
+    source.selectShape(Shape.TopLeft)
     const state = source.exportState()
 
     const store = createEditorStore()
@@ -166,7 +199,14 @@ describe('editor store', () => {
     expect(store.isDirty.value).toBe(true)
     expect(store.tileAt(1, 1)?.color).toBe('#FF0000')
     expect(store.docName.value).toBeUndefined()
+    expect(store.selectedShape.value).toBe(Shape.TopLeft)
     expect(() => store.restoreState({ version: 1 })).toThrow()
+
+    // 選択中の形状を持たない状態も復元できる
+    const { shape: _shape, ...withoutShape } = state
+    store.restoreState(withoutShape)
+    expect(store.selectedShape.value).toBe(Shape.Square)
+    expect(() => store.restoreState({ ...state, shape: 5 })).toThrow()
   })
 
   it('restores the file name of the persisted state', () => {

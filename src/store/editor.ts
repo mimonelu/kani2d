@@ -8,6 +8,7 @@ import {
   eraseTile,
   getTile,
   isInside,
+  isShape,
   moveLayer as moveLayerInDoc,
   paintTile,
   resizeDocument,
@@ -18,7 +19,7 @@ import {
 import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
 import { History } from '../model/history'
 import { DEFAULT_COLOR, PALETTE } from '../model/palette'
-import type { Doc, Layer, Tile } from '../model/types'
+import { Shape, type Doc, type Layer, type Tile } from '../model/types'
 
 interface Snapshot {
   doc: Doc
@@ -40,6 +41,8 @@ export interface PersistedState {
   name: string | null
   dirty: boolean
   color: string
+  /** 選択中の形状。省略時は四角 */
+  shape?: Shape
   activeIndex: number
 }
 
@@ -52,6 +55,7 @@ function isPersistedState(value: unknown): value is PersistedState {
     (typeof state.name === 'string' || state.name === null) &&
     typeof state.dirty === 'boolean' &&
     typeof state.color === 'string' &&
+    (state.shape === undefined || isShape(state.shape)) &&
     typeof state.activeIndex === 'number'
   )
 }
@@ -67,6 +71,8 @@ export function createEditorStore() {
   const docName = ref<string | undefined>(undefined)
   const activeLayerId = ref(initialDoc.layers[0]!.id)
   const selectedColor = ref(DEFAULT_COLOR)
+  /** 空のマスに設置するタイルの形状 */
+  const selectedShape = ref<Shape>(Shape.Square)
   /** 増えるたびにキャンバスの表示を初期状態に戻す */
   const viewResetToken = ref(0)
   const history = new History<Snapshot>(HISTORY_LIMIT)
@@ -187,6 +193,10 @@ export function createEditorStore() {
     if (PALETTE.includes(color)) selectedColor.value = color
   }
 
+  function selectShape(shape: Shape): void {
+    if (isShape(shape)) selectedShape.value = shape
+  }
+
   function tileAt(x: number, y: number): Tile | undefined {
     return getTile(activeLayer.value.tiles, x, y)
   }
@@ -215,7 +225,7 @@ export function createEditorStore() {
 
   function paintAt(x: number, y: number): PaintResult {
     if (!stroke || !isInside(doc.value, x, y)) return 'unchanged'
-    const result = paintTile(stroke.layer.tiles, x, y, selectedColor.value)
+    const result = paintTile(stroke.layer.tiles, x, y, selectedColor.value, selectedShape.value)
     if (result !== 'unchanged') markStrokeChanged()
     return result
   }
@@ -274,6 +284,7 @@ export function createEditorStore() {
       name: docName.value ?? null,
       dirty: isDirty.value,
       color: selectedColor.value,
+      shape: selectedShape.value,
       activeIndex: activeIndex.value,
     }
   }
@@ -284,6 +295,7 @@ export function createEditorStore() {
     const restored = parseDocument(value.file)
     reset(restored, value.name ?? undefined, !value.dirty)
     selectColor(value.color)
+    selectedShape.value = value.shape ?? Shape.Square
     const index = Math.min(Math.max(0, Math.trunc(value.activeIndex)), restored.layers.length - 1)
     activeLayerId.value = restored.layers[index]!.id
   }
@@ -297,6 +309,7 @@ export function createEditorStore() {
     activeIndex,
     activeLayer,
     selectedColor,
+    selectedShape,
     viewResetToken,
     isDirty,
     canUndo,
@@ -314,6 +327,7 @@ export function createEditorStore() {
     moveLayer,
     resize,
     selectColor,
+    selectShape,
     tileAt,
     beginStroke,
     paintAt,

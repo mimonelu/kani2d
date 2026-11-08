@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DEFAULT_TILE_SIZE, TILE_SIZES } from '../model/constants'
 import { isInside, lineCells } from '../model/document'
 import type { Cell } from '../model/types'
-import { CANVAS_COLORS, drawLayerTiles, fillChecker } from '../render/drawTiles'
+import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker } from '../render/drawTiles'
 import { editor } from '../store/editor'
 import { isEditableTarget } from '../utils/dom'
 
@@ -12,10 +12,12 @@ const props = defineProps<{
   locked: boolean
 }>()
 
-const { doc, revision, selectedColor, viewResetToken, activeLayer } = editor
+const { doc, revision, selectedColor, selectedShape, viewResetToken, activeLayer, activeLayerId } = editor
 
 /** 市松模様の 1 マスの大きさ（CSS px） */
 const CHECKER_SIZE = 8
+/** 空のマスに設置されるタイルのプレビューの不透明度 */
+const PREVIEW_ALPHA = 0.5
 /** トラックパッドなどの連続的な入力で 1 段階とみなす移動量 */
 const WHEEL_THRESHOLD = 50
 /** ピンチ操作（ctrlKey 付きのホイール）で 1 段階とみなす移動量 */
@@ -180,13 +182,22 @@ function drawOverlay() {
   // マウス位置のマス
   if (hover.value && hoverInside.value && editable.value && gesture.value?.kind !== 'pan' && !spaceHeld.value) {
     const { x, y } = hover.value
+    // 空のマスには設置されるタイルを半透明で表示する。編集操作中は表示しない
+    if (!gesture.value && !editor.tileAt(x, y)) {
+      const path = new Path2D()
+      appendShapePath(path, selectedShape.value, map.x(x), map.y(y), map.x(x + 1), map.y(y + 1))
+      ctx.globalAlpha = PREVIEW_ALPHA
+      ctx.fillStyle = selectedColor.value
+      ctx.fill(path)
+      ctx.globalAlpha = 1
+    }
     ctx.strokeStyle = CANVAS_COLORS.hover
     ctx.strokeRect(map.x(x) + line / 2, map.y(y) + line / 2, map.x(x + 1) - map.x(x) - line, map.y(y + 1) - map.y(y) - line)
   }
 }
 
 watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight], () => requestRender(true))
-watch([hover, spaceHeld, gesture, editable], () => requestRender(false))
+watch([hover, spaceHeld, gesture, editable, activeLayerId, selectedColor, selectedShape], () => requestRender(false))
 
 // ---- 表示位置 ----
 

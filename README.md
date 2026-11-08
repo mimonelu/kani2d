@@ -4,7 +4,7 @@ A browser-based editor for drawing pictures by placing 2D tiles.
 
 ## Features
 
-- Place square and right-triangle tiles from a 125-color palette
+- Place square and right-triangle tiles from a 72-color palette
 - Layers with visibility toggles, reordering, duplication and deletion
 - Save and load drawings as `.ka2` files
 - Export PNG images with a custom tile size and optional anti-aliasing

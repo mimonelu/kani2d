@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PALETTE, hexToRgb } from '../model/palette'
+import { GRAY_COLORS, HUE_COLORS, PALETTE_COLUMNS, hexToRgb } from '../model/palette'
 import { editor } from '../store/editor'
 
 const { selectedColor } = editor
+
+const GROUPS = [
+  { label: 'Grays', colors: GRAY_COLORS },
+  { label: 'Hues', colors: HUE_COLORS },
+]
 
 function rgbLabel(color: string): string {
   return hexToRgb(color).join(', ')
@@ -21,20 +26,28 @@ const selectedLabel = computed(() => rgbLabel(selectedColor.value))
         {{ selectedLabel }}
       </span>
     </header>
-    <div class="palette__grid" role="listbox" aria-label="Color palette">
-      <button
-        v-for="color in PALETTE"
-        :key="color"
-        type="button"
-        class="swatch"
-        :class="{ 'swatch--selected': color === selectedColor }"
-        :style="{ background: color }"
-        :title="rgbLabel(color)"
-        role="option"
-        :aria-selected="color === selectedColor"
-        :aria-label="rgbLabel(color)"
-        @click="editor.selectColor(color)"
-      />
+    <div class="palette__groups" role="listbox" aria-label="Color palette">
+      <div
+        v-for="group in GROUPS"
+        :key="group.label"
+        class="palette__grid"
+        role="group"
+        :aria-label="group.label"
+      >
+        <button
+          v-for="color in group.colors"
+          :key="color"
+          type="button"
+          class="swatch"
+          :class="{ 'swatch--selected': color === selectedColor }"
+          :style="{ background: color }"
+          :title="rgbLabel(color)"
+          role="option"
+          :aria-selected="color === selectedColor"
+          :aria-label="rgbLabel(color)"
+          @click="editor.selectColor(color)"
+        />
+      </div>
     </div>
   </section>
 </template>
@@ -61,9 +74,15 @@ const selectedLabel = computed(() => rgbLabel(selectedColor.value))
   border-radius: 3px;
 }
 
+.palette__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .palette__grid {
   display: grid;
-  grid-template-columns: repeat(25, 1fr);
+  grid-template-columns: repeat(v-bind(PALETTE_COLUMNS), 1fr);
   gap: 1px;
 }
 

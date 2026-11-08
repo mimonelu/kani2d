@@ -40,12 +40,20 @@ export interface Layer {
   readonly tiles: TileMap
 }
 
+/** ガイドラインの間隔（マス） */
+export interface GuideSpacing {
+  readonly width: number
+  readonly height: number
+}
+
 /** ドキュメントは不変として扱い、変更時は新しいオブジェクトを作る */
 export interface Doc {
   /** 幅（マス） */
   readonly width: number
   /** 高さ（マス） */
   readonly height: number
+  /** キャンバスの左上を起点とする */
+  readonly guideSpacing: GuideSpacing
   /** 背面から前面の順。先頭は常に背景レイヤー */
   readonly layers: readonly Layer[]
 }

@@ -5,6 +5,7 @@ export const CANVAS_COLORS = {
   checkerLight: '#333438',
   checkerDark: '#26272a',
   guide: 'rgba(170, 170, 176, 0.55)',
+  guideLine: 'rgba(170, 170, 176, 0.35)',
   border: 'rgba(255, 255, 255, 0.18)',
   hover: 'rgba(255, 255, 255, 0.75)',
   eraseHover: 'rgba(240, 90, 80, 0.9)',

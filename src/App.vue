@@ -5,6 +5,7 @@ import ColorPalette from './components/ColorPalette.vue'
 import DialogModal from './components/DialogModal.vue'
 import EditorCanvas from './components/EditorCanvas.vue'
 import ExportModal from './components/ExportModal.vue'
+import GuidesModal from './components/GuidesModal.vue'
 import LayerList from './components/LayerList.vue'
 import NewModal from './components/NewModal.vue'
 import ResizeModal from './components/ResizeModal.vue'
@@ -41,6 +42,7 @@ const { docName, isDirty } = editor
 
 const showNew = ref(false)
 const showResize = ref(false)
+const showGuides = ref(false)
 const showExport = ref(false)
 const showSaveAs = ref(false)
 const dialog = shallowRef<Dialog | null>(null)
@@ -48,7 +50,13 @@ const fileInput = ref<HTMLInputElement>()
 const saving = ref(false)
 
 const modalOpen = computed(
-  () => showNew.value || showResize.value || showExport.value || showSaveAs.value || dialog.value !== null,
+  () =>
+    showNew.value ||
+    showResize.value ||
+    showGuides.value ||
+    showExport.value ||
+    showSaveAs.value ||
+    dialog.value !== null,
 )
 
 /** ロードしたファイル、またはファイル保存ダイアログで選ばれたファイル。以降のセーブはこのファイルに上書きする */
@@ -252,6 +260,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
       @new="onNew"
       @resize="showResize = true"
       @trim="editor.trim()"
+      @guides="showGuides = true"
       @load="onLoad"
       @save="onSave"
       @export="showExport = true"
@@ -276,6 +285,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
     />
     <NewModal v-if="showNew" @close="showNew = false" @create="onCreate" />
     <ResizeModal v-if="showResize" @close="showResize = false" />
+    <GuidesModal v-if="showGuides" @close="showGuides = false" />
     <ExportModal v-if="showExport" @close="showExport = false" />
     <SaveAsModal v-if="showSaveAs" @close="showSaveAs = false" @save="onSaveAs" />
     <DialogModal

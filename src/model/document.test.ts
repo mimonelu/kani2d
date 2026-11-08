@@ -22,6 +22,7 @@ import {
   resizeDocument,
   resizeOffset,
   rotateTile,
+  setGuideSpacing,
   setLayerVisible,
   trimDocument,
 } from './document'
@@ -104,6 +105,22 @@ describe('document', () => {
     expect(parseCanvasSize('')).toBeNull()
     expect(createDocument(3, 2)).toMatchObject({ width: 3, height: 2 })
     expect(() => createDocument(0, 2)).toThrow()
+  })
+
+  it('sets the guide spacing and keeps it when resizing and trimming', () => {
+    const doc = createDocument(8, 8)
+    expect(doc.guideSpacing).toEqual({ width: 16, height: 16 })
+    expect(setGuideSpacing(doc, { width: 16, height: 16 })).toBe(doc)
+    const spaced = setGuideSpacing(doc, { width: 4, height: 2 })
+    expect(spaced.guideSpacing).toEqual({ width: 4, height: 2 })
+    expect(spaced.layers).toBe(doc.layers)
+    expect(doc.guideSpacing).toEqual({ width: 16, height: 16 })
+    expect(() => setGuideSpacing(doc, { width: 0, height: 2 })).toThrow()
+    expect(() => setGuideSpacing(doc, { width: 1.5, height: 2 })).toThrow()
+
+    paintTile(spaced.layers[0]!.tiles, 2, 3, '#FF0000')
+    expect(resizeDocument(spaced, 4, 4).guideSpacing).toEqual({ width: 4, height: 2 })
+    expect(trimDocument(spaced).guideSpacing).toEqual({ width: 4, height: 2 })
   })
 
   it('resizes around the center and removes tiles outside', () => {

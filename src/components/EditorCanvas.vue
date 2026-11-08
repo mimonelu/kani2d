@@ -208,6 +208,22 @@ function drawMain() {
       }
     }
 
+    // ガイドライン。キャンバスの左上を起点に、間隔ごとのマスの境界に引く。キャンバスの端には引かない
+    const line = Math.max(1, Math.round(dpr))
+    const lineHalf = Math.floor(line / 2)
+    const { width: spacingX, height: spacingY } = current.guideSpacing
+    const guideLines = new Path2D()
+    const lastX = Math.min(range.x1 + 1, current.width - 1)
+    for (let gx = Math.ceil(Math.max(1, range.x0) / spacingX) * spacingX; gx <= lastX; gx += spacingX) {
+      guideLines.rect(map.x(gx) - lineHalf, top, line, bottom - top)
+    }
+    const lastY = Math.min(range.y1 + 1, current.height - 1)
+    for (let gy = Math.ceil(Math.max(1, range.y0) / spacingY) * spacingY; gy <= lastY; gy += spacingY) {
+      guideLines.rect(left, map.y(gy) - lineHalf, right - left, line)
+    }
+    ctx.fillStyle = CANVAS_COLORS.guideLine
+    ctx.fill(guideLines)
+
     // ガイドポイント（マス目の交点）
     const dot = Math.max(1, Math.round(dpr * Math.min(2, Math.max(1, tileSize.value / 16))))
     const half = Math.floor(dot / 2)

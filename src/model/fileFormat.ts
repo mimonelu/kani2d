@@ -1,7 +1,13 @@
-import { BACKGROUND_LAYER_NAME, FILE_EXTENSION, FILE_FORMAT_ID, FILE_FORMAT_VERSION } from './constants'
+import {
+  BACKGROUND_LAYER_NAME,
+  DEFAULT_GUIDE_SPACING,
+  FILE_EXTENSION,
+  FILE_FORMAT_ID,
+  FILE_FORMAT_VERSION,
+} from './constants'
 import { createLayer, isShape, isValidCanvasSize, tileKey } from './document'
 import { COLOR_PATTERN } from './palette'
-import type { Doc, Shape, TileMap } from './types'
+import type { Doc, GuideSpacing, Shape, TileMap } from './types'
 
 /** `[x, y, 色, 形状]` */
 export type SerializedTile = [number, number, string, Shape]
@@ -18,6 +24,8 @@ export interface SerializedDoc {
   version: typeof FILE_FORMAT_VERSION
   width: number
   height: number
+  /** ガイドラインの間隔（マス）。バージョン 3 で追加。省略時は 16×16 とみなす */
+  guideSpacing: { width: number; height: number }
   /** 背面から前面の順 */
   layers: SerializedLayer[]
 }
@@ -41,6 +49,7 @@ export function toSerialized(doc: Doc): SerializedDoc {
     version: FILE_FORMAT_VERSION,
     width: doc.width,
     height: doc.height,
+    guideSpacing: { width: doc.guideSpacing.width, height: doc.guideSpacing.height },
     layers: doc.layers.map((layer) => ({
       name: layer.name,
       visible: layer.visible,
@@ -88,6 +97,20 @@ function parseTiles(value: unknown, width: number, height: number, layerIndex: n
   return tiles
 }
 
+function parseGuideSpacing(value: unknown): GuideSpacing {
+  if (value === undefined) return { width: DEFAULT_GUIDE_SPACING, height: DEFAULT_GUIDE_SPACING }
+  if (
+    !isRecord(value) ||
+    !isInteger(value.width) ||
+    !isInteger(value.height) ||
+    !isValidCanvasSize(value.width) ||
+    !isValidCanvasSize(value.height)
+  ) {
+    throw new FileFormatError('The file has an invalid guide spacing.')
+  }
+  return { width: value.width, height: value.height }
+}
+
 export function parseDocument(text: string): Doc {
   let data: unknown
   try {
@@ -110,6 +133,7 @@ export function parseDocument(text: string): Doc {
   if (!isInteger(width) || !isInteger(height) || !isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new FileFormatError('The file has an invalid canvas size.')
   }
+  const guideSpacing = parseGuideSpacing(data.guideSpacing)
   if (!Array.isArray(data.layers) || data.layers.length === 0) {
     throw new FileFormatError('The file has no layers.')
   }
@@ -125,7 +149,7 @@ export function parseDocument(text: string): Doc {
     // 先頭は名前によらず背景レイヤーとして扱う
     return createLayer(index === 0 ? BACKGROUND_LAYER_NAME : raw.name, tiles, raw.visible !== false)
   })
-  return { width, height, layers }
+  return { width, height, guideSpacing, layers }
 }
 
 /** ファイル名から拡張子を除いた部分を返す */

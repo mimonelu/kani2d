@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addLayer, createDocument, paintTile, rotateTile, setLayerVisible } from './document'
+import { addLayer, createDocument, paintTile, rotateTile, setGuideSpacing, setLayerVisible } from './document'
 import { FileFormatError, baseName, normalizeFileName, parseDocument, serializeDocument, toSerialized } from './fileFormat'
 
 function sample() {
@@ -8,16 +8,17 @@ function sample() {
   doc = addLayer(doc, 0).doc
   paintTile(doc.layers[1]!.tiles, 7, 3, '#0040C0')
   rotateTile(doc.layers[1]!.tiles, 7, 3)
-  return setLayerVisible(doc, 1, false)
+  return setGuideSpacing(setLayerVisible(doc, 1, false), { width: 8, height: 4 })
 }
 
 describe('fileFormat', () => {
   it('serializes to the documented structure', () => {
     expect(toSerialized(sample())).toEqual({
       format: 'kani2d',
-      version: 2,
+      version: 3,
       width: 8,
       height: 4,
+      guideSpacing: { width: 8, height: 4 },
       layers: [
         { name: 'Background', visible: true, tiles: [[1, 2, '#FF0000', 0]] },
         { name: 'Layer 1', visible: false, tiles: [[7, 3, '#0040C0', 3]] },
@@ -48,6 +49,19 @@ describe('fileFormat', () => {
     expect(parsed.layers[0]!.tiles.size).toBe(1)
   })
 
+  it('reads version 2 files with the default guide spacing', () => {
+    const parsed = parseDocument(
+      JSON.stringify({
+        format: 'kani2d',
+        version: 2,
+        width: 2,
+        height: 2,
+        layers: [{ name: 'Background', visible: true, tiles: [] }],
+      }),
+    )
+    expect(parsed.guideSpacing).toEqual({ width: 16, height: 16 })
+  })
+
   it('ignores tiles outside the canvas and normalizes colors', () => {
     const parsed = parseDocument(
       JSON.stringify({
@@ -65,9 +79,31 @@ describe('fileFormat', () => {
   it.each([
     ['not json', '{'],
     ['wrong format', JSON.stringify({ format: 'other', version: 1, width: 1, height: 1, layers: [] })],
-    ['newer version', JSON.stringify({ format: 'kani2d', version: 3, width: 1, height: 1, layers: [] })],
+    ['newer version', JSON.stringify({ format: 'kani2d', version: 4, width: 1, height: 1, layers: [] })],
     ['invalid size', JSON.stringify({ format: 'kani2d', version: 1, width: 0, height: 1, layers: [] })],
     ['no layers', JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [] })],
+    [
+      'invalid guide spacing',
+      JSON.stringify({
+        format: 'kani2d',
+        version: 3,
+        width: 1,
+        height: 1,
+        guideSpacing: { width: 0, height: 16 },
+        layers: [{ name: 'a', visible: true, tiles: [] }],
+      }),
+    ],
+    [
+      'guide spacing without height',
+      JSON.stringify({
+        format: 'kani2d',
+        version: 3,
+        width: 1,
+        height: 1,
+        guideSpacing: { width: 16 },
+        layers: [{ name: 'a', visible: true, tiles: [] }],
+      }),
+    ],
     [
       'invalid shape',
       JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [{ name: 'a', tiles: [[0, 0, '#FFFFFF', 5]] }] }),

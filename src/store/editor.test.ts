@@ -382,6 +382,30 @@ describe('editor store', () => {
     expect(store.doc.value).toMatchObject({ width: 8, height: 8 })
   })
 
+  it('sets the guide spacing with undo and resets it on new documents', () => {
+    const store = createEditorStore()
+    store.setGuideSpacing({ width: 16, height: 16 })
+    expect(store.canUndo.value).toBe(false)
+
+    store.setGuideSpacing({ width: 8, height: 4 })
+    expect(store.doc.value.guideSpacing).toEqual({ width: 8, height: 4 })
+    expect(store.isDirty.value).toBe(true)
+    store.undo()
+    expect(store.doc.value.guideSpacing).toEqual({ width: 16, height: 16 })
+    expect(store.isDirty.value).toBe(false)
+    store.redo()
+
+    const loaded = createEditorStore()
+    loaded.loadFile(store.serialize(), 'picture.ka2')
+    expect(loaded.doc.value.guideSpacing).toEqual({ width: 8, height: 4 })
+    const restored = createEditorStore()
+    restored.restoreState(store.exportState())
+    expect(restored.doc.value.guideSpacing).toEqual({ width: 8, height: 4 })
+
+    store.newDocument()
+    expect(store.doc.value.guideSpacing).toEqual({ width: 16, height: 16 })
+  })
+
   it('loads files and clears history', () => {
     const source = createEditorStore()
     source.resize(4, 3)

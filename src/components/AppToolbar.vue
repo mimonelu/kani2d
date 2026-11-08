@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Crop, FilePlus, FolderOpen, ImageDown, Save, Scaling } from '@lucide/vue'
+import { Crop, FilePlus, FolderOpen, Grid3x3, ImageDown, Save, Scaling } from '@lucide/vue'
 import { APP_NAME, UNNAMED_FILE_LABEL } from '../model/constants'
 import { editor } from '../store/editor'
 
@@ -7,6 +7,7 @@ const emit = defineEmits<{
   new: []
   resize: []
   trim: []
+  guides: []
   load: []
   save: []
   export: []
@@ -29,6 +30,9 @@ const { docName, isDirty, canTrim } = editor
         @click="emit('trim')"
       >
         <Crop :size="16" />Trim
+      </button>
+      <button type="button" class="button" title="Set the guide line spacing" @click="emit('guides')">
+        <Grid3x3 :size="16" />Guides
       </button>
       <button type="button" class="button" @click="emit('load')"><FolderOpen :size="16" />Load</button>
       <button type="button" class="button" @click="emit('save')"><Save :size="16" />Save</button>

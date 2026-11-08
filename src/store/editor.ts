@@ -17,6 +17,7 @@ import {
   paintTile,
   resizeDocument,
   rotateTile,
+  setGuideSpacing as setGuideSpacingInDoc,
   setLayerVisible,
   trimDocument,
   type PaintResult,
@@ -25,7 +26,7 @@ import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
 import { History } from '../model/history'
 import { DEFAULT_COLOR, PALETTE } from '../model/palette'
 import { DEFAULT_TOOL, isTool, type Tool } from '../model/tools'
-import { Shape, type Doc, type Layer, type ResizeAnchor, type Tile } from '../model/types'
+import { Shape, type Doc, type GuideSpacing, type Layer, type ResizeAnchor, type Tile } from '../model/types'
 
 interface Snapshot {
   doc: Doc
@@ -210,6 +211,11 @@ export function createEditorStore() {
   /** 全レイヤーのタイルを囲む最小の矩形でキャンバスを切り抜く */
   function trim(): void {
     const next = trimDocument(doc.value)
+    if (next !== doc.value) commit(next)
+  }
+
+  function setGuideSpacing(spacing: GuideSpacing): void {
+    const next = setGuideSpacingInDoc(doc.value, spacing)
     if (next !== doc.value) commit(next)
   }
 
@@ -408,6 +414,7 @@ export function createEditorStore() {
     moveLayer,
     resize,
     trim,
+    setGuideSpacing,
     selectColor,
     selectShape,
     selectTool,

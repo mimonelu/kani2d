@@ -3,6 +3,7 @@ import {
   CENTER_ANCHOR,
   COPY_SUFFIX,
   DEFAULT_CANVAS_SIZE,
+  DEFAULT_GUIDE_SPACING,
   LAYER_NAME_PREFIX,
 } from './constants'
 import {
@@ -12,6 +13,7 @@ import {
   type AnchorPosition,
   type Cell,
   type Doc,
+  type GuideSpacing,
   type Layer,
   type Rect,
   type ResizeAnchor,
@@ -50,7 +52,21 @@ export function createDocument(width = DEFAULT_CANVAS_SIZE, height = DEFAULT_CAN
   if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
-  return { width, height, layers: [createLayer(BACKGROUND_LAYER_NAME)] }
+  return {
+    width,
+    height,
+    guideSpacing: { width: DEFAULT_GUIDE_SPACING, height: DEFAULT_GUIDE_SPACING },
+    layers: [createLayer(BACKGROUND_LAYER_NAME)],
+  }
+}
+
+/** ガイドラインの間隔を変更する。変更が無い場合はそのまま返す */
+export function setGuideSpacing(doc: Doc, spacing: GuideSpacing): Doc {
+  if (!isValidCanvasSize(spacing.width) || !isValidCanvasSize(spacing.height)) {
+    throw new RangeError(`Invalid guide spacing: ${spacing.width} x ${spacing.height}`)
+  }
+  if (spacing.width === doc.guideSpacing.width && spacing.height === doc.guideSpacing.height) return doc
+  return { ...doc, guideSpacing: { width: spacing.width, height: spacing.height } }
 }
 
 export function isInside(size: { readonly width: number; readonly height: number }, x: number, y: number): boolean {
@@ -168,7 +184,7 @@ export function cropDocument(doc: Doc, left: number, top: number, width: number,
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
   const layers = doc.layers.map((layer) => ({ ...layer, tiles: offsetTiles(layer.tiles, -left, -top, { width, height }) }))
-  return { width, height, layers }
+  return { ...doc, width, height, layers }
 }
 
 /** 基準位置を保ってリサイズし、範囲外となるタイルを削除する */

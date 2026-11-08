@@ -55,6 +55,14 @@ export interface Cell {
   readonly y: number
 }
 
+/** マス単位の矩形 */
+export interface Rect {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
 /** リサイズの基準位置の各軸の値。0 は左（上）、0.5 は中央、1 は右（下） */
 export type AnchorPosition = 0 | 0.5 | 1
 

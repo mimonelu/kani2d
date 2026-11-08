@@ -7,13 +7,16 @@ import {
   duplicateLayer as duplicateLayerInDoc,
   eraseTile,
   getTile,
+  hasTiles,
   isInside,
   isShape,
   moveLayer as moveLayerInDoc,
+  offsetTiles,
   paintTile,
   resizeDocument,
   rotateTile,
   setLayerVisible,
+  trimDocument,
   type PaintResult,
 } from '../model/document'
 import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
@@ -90,6 +93,8 @@ export function createEditorStore() {
   const isDirty = computed(() => doc.value !== savedDoc.value)
   const canUndo = computed(() => historyVersion.value >= 0 && history.canUndo)
   const canRedo = computed(() => historyVersion.value >= 0 && history.canRedo)
+  /** 自動切り抜きできるか。ストローク中のタイル変更も反映するため revision に依存させる */
+  const canTrim = computed(() => revision.value >= 0 && hasTiles(doc.value))
 
   function snapshot(): Snapshot {
     return { doc: doc.value, activeLayerId: activeLayerId.value }
@@ -192,6 +197,12 @@ export function createEditorStore() {
     commit(resizeDocument(doc.value, width, height, anchor))
   }
 
+  /** 全レイヤーのタイルを囲む最小の矩形でキャンバスを切り抜く */
+  function trim(): void {
+    const next = trimDocument(doc.value)
+    if (next !== doc.value) commit(next)
+  }
+
   function selectColor(color: string): void {
     if (PALETTE.includes(color)) selectedColor.value = color
   }
@@ -270,6 +281,18 @@ export function createEditorStore() {
     return changed
   }
 
+  /** ストローク中のレイヤーのタイルをまとめて移動する。キャンバス範囲外に出たタイルは削除する */
+  function moveTiles(dx: number, dy: number): boolean {
+    if (!stroke || (dx === 0 && dy === 0)) return false
+    const { tiles } = stroke.layer
+    if (tiles.size === 0) return false
+    const moved = offsetTiles(tiles, dx, dy, doc.value)
+    tiles.clear()
+    for (const [key, tile] of moved) tiles.set(key, tile)
+    markStrokeChanged()
+    return true
+  }
+
   function endStroke(): void {
     if (!stroke) return
     const { before, changed } = stroke
@@ -341,6 +364,7 @@ export function createEditorStore() {
     isDirty,
     canUndo,
     canRedo,
+    canTrim,
     newDocument,
     loadFile,
     serialize,
@@ -353,6 +377,7 @@ export function createEditorStore() {
     toggleLayerVisibility,
     moveLayer,
     resize,
+    trim,
     selectColor,
     selectShape,
     selectTool,
@@ -362,6 +387,7 @@ export function createEditorStore() {
     paintAt,
     rotateAt,
     eraseAt,
+    moveTiles,
     endStroke,
     isStroking,
     undo,

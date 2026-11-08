@@ -13,6 +13,7 @@ import {
   type Cell,
   type Doc,
   type Layer,
+  type Rect,
   type ResizeAnchor,
   type Tile,
   type TileMap,
@@ -134,24 +135,37 @@ export function resizeOffset(from: number, to: number, anchor: AnchorPosition = 
   return Math.trunc(diff / 2) || 0
 }
 
-/** 基準位置を保ってリサイズし、範囲外となるタイルを削除する */
-export function resizeDocument(doc: Doc, width: number, height: number, anchor: ResizeAnchor = CENTER_ANCHOR): Doc {
+/** タイルをまとめて (dx, dy) 移動した新しいマップを返す。`size` の範囲外となるタイルは削除する */
+export function offsetTiles(
+  tiles: TileMap,
+  dx: number,
+  dy: number,
+  size: { readonly width: number; readonly height: number },
+): TileMap {
+  const result: TileMap = new Map()
+  for (const tile of tiles.values()) {
+    const x = tile.x + dx
+    const y = tile.y + dy
+    if (!isInside(size, x, y)) continue
+    result.set(tileKey(x, y), dx === 0 && dy === 0 ? tile : { ...tile, x, y })
+  }
+  return result
+}
+
+/** (left, top) を左上とする範囲でキャンバスを切り抜き、範囲外となるタイルを削除する。範囲はキャンバスの外を含んでもよい */
+export function cropDocument(doc: Doc, left: number, top: number, width: number, height: number): Doc {
   if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
+  const layers = doc.layers.map((layer) => ({ ...layer, tiles: offsetTiles(layer.tiles, -left, -top, { width, height }) }))
+  return { width, height, layers }
+}
+
+/** 基準位置を保ってリサイズし、範囲外となるタイルを削除する */
+export function resizeDocument(doc: Doc, width: number, height: number, anchor: ResizeAnchor = CENTER_ANCHOR): Doc {
   const dx = resizeOffset(doc.width, width, anchor.x)
   const dy = resizeOffset(doc.height, height, anchor.y)
-  const layers = doc.layers.map((layer) => {
-    const tiles: TileMap = new Map()
-    for (const tile of layer.tiles.values()) {
-      const x = tile.x + dx
-      const y = tile.y + dy
-      if (!isInside({ width, height }, x, y)) continue
-      tiles.set(tileKey(x, y), dx === 0 && dy === 0 ? tile : { ...tile, x, y })
-    }
-    return { ...layer, tiles }
-  })
-  return { width, height, layers }
+  return cropDocument(doc, -dx, -dy, width, height)
 }
 
 /** リサイズで範囲外となるタイルの数を返す */
@@ -170,6 +184,36 @@ export function countTilesRemovedByResize(
     }
   }
   return count
+}
+
+export function hasTiles(doc: Doc): boolean {
+  return doc.layers.some((layer) => layer.tiles.size > 0)
+}
+
+/** 全レイヤー（非表示を含む）のタイルを囲む最小の矩形を返す。タイルが無い場合は null を返す */
+export function contentBounds(doc: Doc): Rect | null {
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const layer of doc.layers) {
+    for (const tile of layer.tiles.values()) {
+      x0 = Math.min(x0, tile.x)
+      y0 = Math.min(y0, tile.y)
+      x1 = Math.max(x1, tile.x)
+      y1 = Math.max(y1, tile.y)
+    }
+  }
+  if (x0 > x1) return null
+  return { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }
+}
+
+/** 全レイヤーのタイルを囲む最小の矩形でキャンバスを切り抜く。タイルが無い場合や既に一致している場合はそのまま返す */
+export function trimDocument(doc: Doc): Doc {
+  const bounds = contentBounds(doc)
+  if (!bounds) return doc
+  if (bounds.x === 0 && bounds.y === 0 && bounds.width === doc.width && bounds.height === doc.height) return doc
+  return cropDocument(doc, bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
 export function isShape(value: unknown): value is Shape {

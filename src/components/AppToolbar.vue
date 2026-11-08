@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { FilePlus, FolderOpen, ImageDown, Save, Scaling } from '@lucide/vue'
+import { Crop, FilePlus, FolderOpen, ImageDown, Save, Scaling } from '@lucide/vue'
 import { APP_NAME, UNNAMED_FILE_LABEL } from '../model/constants'
 import { editor } from '../store/editor'
 
 const emit = defineEmits<{
   new: []
   resize: []
+  trim: []
   load: []
   save: []
   export: []
 }>()
 
-const { docName, isDirty } = editor
+const { docName, isDirty, canTrim } = editor
 </script>
 
 <template>
@@ -20,6 +21,15 @@ const { docName, isDirty } = editor
     <nav class="actions" aria-label="File">
       <button type="button" class="button" @click="emit('new')"><FilePlus :size="16" />New</button>
       <button type="button" class="button" @click="emit('resize')"><Scaling :size="16" />Resize</button>
+      <button
+        type="button"
+        class="button"
+        title="Trim the canvas to fit the tiles"
+        :disabled="!canTrim"
+        @click="emit('trim')"
+      >
+        <Crop :size="16" />Trim
+      </button>
       <button type="button" class="button" @click="emit('load')"><FolderOpen :size="16" />Load</button>
       <button type="button" class="button" @click="emit('save')"><Save :size="16" />Save</button>
       <button type="button" class="button" @click="emit('export')"><ImageDown :size="16" />Export</button>

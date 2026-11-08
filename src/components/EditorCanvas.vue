@@ -5,9 +5,10 @@ import { isInside, lineCells } from '../model/document'
 import type { Tool } from '../model/tools'
 import type { Cell } from '../model/types'
 import { PIPETTE_CURSOR } from '../render/cursors'
-import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker } from '../render/drawTiles'
+import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker, type CellRange } from '../render/drawTiles'
 import { editor } from '../store/editor'
 import { isEditableTarget } from '../utils/dom'
+import { IS_MAC } from '../utils/platform'
 
 const props = defineProps<{
   /** モーダル表示中など、キャンバスへのキーボード操作を受け付けない状態 */
@@ -20,6 +21,10 @@ const { doc, revision, selectedColor, selectedShape, activeTool, viewResetToken,
 const CHECKER_SIZE = 8
 /** 空のマスに設置されるタイルのプレビューの不透明度 */
 const PREVIEW_ALPHA = 0.5
+/** 移動中にキャンバス範囲外に出たタイルの不透明度 */
+const OUTSIDE_ALPHA = 0.35
+/** 押下中に左ドラッグを Move に切り替える修飾キー（`KeyboardEvent.key`） */
+const MOVE_MODIFIER_KEY = IS_MAC ? 'Meta' : 'Control'
 /** トラックパッドなどの連続的な入力で 1 段階とみなす移動量 */
 const WHEEL_THRESHOLD = 50
 /** ピンチ操作（ctrlKey 付きのホイール）で 1 段階とみなす移動量 */
@@ -42,20 +47,30 @@ const originY = ref(0)
 const hover = ref<Cell | null>(null)
 const spaceHeld = ref(false)
 const altHeld = ref(false)
+const moveKeyHeld = ref(false)
+/** Move の操作中の移動量（マス）。操作中でなければ null */
+const moveOffset = ref<Cell | null>(null)
 
 type Gesture =
   | { kind: 'pan'; pointerId: number; startX: number; startY: number; originX: number; originY: number }
   | { kind: 'paint'; pointerId: number; last: Cell; pendingRotate: Cell | null }
   | { kind: 'erase'; pointerId: number; last: Cell }
+  | { kind: 'move'; pointerId: number; start: Cell }
 
 const gesture = ref<Gesture | null>(null)
 
 /** 非表示のレイヤーは編集できない */
 const editable = computed(() => activeLayer.value.visible)
 
-/** 左クリックの操作。Space キー押下中は Pan、Alt キー押下中は Pick に一時的に切り替える */
+/**
+ * 左クリックの操作。以下のキーの押下中は一時的に切り替える
+ * - Space キー: Pan
+ * - Ctrl（macOS は ⌘）キー: Move
+ * - Alt キー: Pick
+ */
 const leftTool = computed<Tool>(() => {
   if (spaceHeld.value) return 'pan'
+  if (moveKeyHeld.value) return 'move'
   if (altHeld.value) return 'pick'
   return activeTool.value
 })
@@ -69,6 +84,8 @@ const hoverTool = computed<Tool>(() => {
       return 'draw'
     case 'erase':
       return 'erase'
+    case 'move':
+      return 'move'
     default:
       return leftTool.value
   }
@@ -80,6 +97,8 @@ const cursor = computed(() => {
       return gesture.value ? 'grabbing' : 'grab'
     case 'pick':
       return PIPETTE_CURSOR
+    case 'move':
+      return editable.value ? 'move' : 'not-allowed'
     default:
       return editable.value ? 'crosshair' : 'not-allowed'
   }
@@ -122,6 +141,10 @@ function prepareCanvas(canvas: HTMLCanvasElement | undefined): { ctx: CanvasRend
   return { ctx, dpr }
 }
 
+function shiftRange(range: CellRange, dx: number, dy: number): CellRange {
+  return { x0: range.x0 + dx, y0: range.y0 + dy, x1: range.x1 + dx, y1: range.y1 + dy }
+}
+
 /** マス座標をデバイスピクセル座標に変換する関数。隣接するマスが同じ整数座標を共有するよう丸める */
 function deviceMapper(dpr: number) {
   const size = tileSize.value * dpr
@@ -146,46 +169,78 @@ function drawMain() {
 
   const current = doc.value
   const map = deviceMapper(dpr)
+  // Move の操作中は、アクティブなレイヤーを移動後の位置に描画する
+  const offset = moveOffset.value
+  const moving = offset && (offset.x !== 0 || offset.y !== 0) ? offset : null
+  const movingLayer = moving ? activeLayer.value : null
+  const movedX = (cx: number) => map.x(cx + (moving?.x ?? 0))
+  const movedY = (cy: number) => map.y(cy + (moving?.y ?? 0))
   const left = Math.max(0, map.x(0))
   const top = Math.max(0, map.y(0))
   const right = Math.min(canvasWidth, map.x(current.width))
   const bottom = Math.min(canvasHeight, map.y(current.height))
-  if (right <= left || bottom <= top) return
+  const canvasVisible = right > left && bottom > top
 
-  ctx.save()
-  ctx.beginPath()
-  ctx.rect(left, top, right - left, bottom - top)
-  ctx.clip()
+  if (canvasVisible) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(left, top, right - left, bottom - top)
+    ctx.clip()
 
-  fillChecker(ctx, CHECKER_SIZE * dpr, map.ox, map.oy, left, top, right - left, bottom - top)
+    fillChecker(ctx, CHECKER_SIZE * dpr, map.ox, map.oy, left, top, right - left, bottom - top)
 
-  // 表示範囲内のマスのみ描画する
-  const range = {
-    x0: Math.max(0, Math.floor((left - map.ox) / map.size) - 1),
-    y0: Math.max(0, Math.floor((top - map.oy) / map.size) - 1),
-    x1: Math.min(current.width - 1, Math.ceil((right - map.ox) / map.size) + 1),
-    y1: Math.min(current.height - 1, Math.ceil((bottom - map.oy) / map.size) + 1),
-  }
-  for (const layer of current.layers) {
-    if (layer.visible) drawLayerTiles(ctx, layer, map.x, map.y, range)
-  }
-
-  // ガイドポイント（マス目の交点）
-  const dot = Math.max(1, Math.round(dpr * Math.min(2, Math.max(1, tileSize.value / 16))))
-  const half = Math.floor(dot / 2)
-  const guides = new Path2D()
-  for (let gy = range.y0; gy <= range.y1 + 1; gy++) {
-    const py = map.y(gy) - half
-    for (let gx = range.x0; gx <= range.x1 + 1; gx++) {
-      guides.rect(map.x(gx) - half, py, dot, dot)
+    // 表示範囲内のマスのみ描画する
+    const range = {
+      x0: Math.max(0, Math.floor((left - map.ox) / map.size) - 1),
+      y0: Math.max(0, Math.floor((top - map.oy) / map.size) - 1),
+      x1: Math.min(current.width - 1, Math.ceil((right - map.ox) / map.size) + 1),
+      y1: Math.min(current.height - 1, Math.ceil((bottom - map.oy) / map.size) + 1),
     }
-  }
-  ctx.globalAlpha = tileSize.value < 8 ? 0.5 : 1
-  ctx.fillStyle = CANVAS_COLORS.guide
-  ctx.fill(guides)
-  ctx.globalAlpha = 1
+    const movedRange = moving ? shiftRange(range, -moving.x, -moving.y) : range
+    for (const layer of current.layers) {
+      if (!layer.visible) continue
+      if (layer === movingLayer) {
+        drawLayerTiles(ctx, layer, movedX, movedY, movedRange)
+      } else {
+        drawLayerTiles(ctx, layer, map.x, map.y, range)
+      }
+    }
 
-  ctx.restore()
+    // ガイドポイント（マス目の交点）
+    const dot = Math.max(1, Math.round(dpr * Math.min(2, Math.max(1, tileSize.value / 16))))
+    const half = Math.floor(dot / 2)
+    const guides = new Path2D()
+    for (let gy = range.y0; gy <= range.y1 + 1; gy++) {
+      const py = map.y(gy) - half
+      for (let gx = range.x0; gx <= range.x1 + 1; gx++) {
+        guides.rect(map.x(gx) - half, py, dot, dot)
+      }
+    }
+    ctx.globalAlpha = tileSize.value < 8 ? 0.5 : 1
+    ctx.fillStyle = CANVAS_COLORS.guide
+    ctx.fill(guides)
+    ctx.globalAlpha = 1
+
+    ctx.restore()
+  }
+
+  // 移動中にキャンバス範囲外に出た部分は、離した時点で削除されることが分かるよう半透明で描画する
+  if (moving && movingLayer?.visible) {
+    ctx.save()
+    const outside = new Path2D()
+    outside.rect(0, 0, canvasWidth, canvasHeight)
+    if (canvasVisible) outside.rect(left, top, right - left, bottom - top)
+    ctx.clip(outside, 'evenodd')
+    ctx.globalAlpha = OUTSIDE_ALPHA
+    const viewRange = {
+      x0: Math.floor(-map.ox / map.size) - 1,
+      y0: Math.floor(-map.oy / map.size) - 1,
+      x1: Math.ceil((canvasWidth - map.ox) / map.size) + 1,
+      y1: Math.ceil((canvasHeight - map.oy) / map.size) + 1,
+    }
+    drawLayerTiles(ctx, movingLayer, movedX, movedY, shiftRange(viewRange, -moving.x, -moving.y))
+    ctx.restore()
+  }
 }
 
 function drawOverlay() {
@@ -209,7 +264,7 @@ function drawOverlay() {
 
   // マウス位置のマス
   const tool = hoverTool.value
-  if (hover.value && hoverInside.value && tool !== 'pan' && (tool === 'pick' || editable.value)) {
+  if (hover.value && hoverInside.value && tool !== 'pan' && tool !== 'move' && (tool === 'pick' || editable.value)) {
     const { x, y } = hover.value
     // Draw では空のマスに設置されるタイルを半透明で表示する。編集操作中は表示しない
     if (tool === 'draw' && !gesture.value && !editor.tileAt(x, y)) {
@@ -225,7 +280,7 @@ function drawOverlay() {
   }
 }
 
-watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight], () => requestRender(true))
+watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight, moveOffset], () => requestRender(true))
 watch([hover, hoverTool, gesture, editable, activeLayerId, selectedColor, selectedShape], () => requestRender(false))
 
 // ---- 表示位置 ----
@@ -312,9 +367,14 @@ function sameCell(a: Cell | null, b: Cell | null): boolean {
   return a !== null && b !== null && a.x === b.x && a.y === b.y
 }
 
+function isMoveModifierPressed(event: MouseEvent): boolean {
+  return IS_MAC ? event.metaKey : event.ctrlKey
+}
+
 function onPointerDown(event: PointerEvent) {
   if (gesture.value || !container.value) return
   altHeld.value = event.altKey
+  moveKeyHeld.value = isMoveModifierPressed(event)
   // 右クリックはツールによらず Erase とする
   const tool = event.button === 0 ? leftTool.value : event.button === 2 ? 'erase' : null
   if (!tool) return
@@ -345,6 +405,10 @@ function onPointerDown(event: PointerEvent) {
       editor.paintAt(cell.x, cell.y)
     }
     gesture.value = { kind: 'paint', pointerId: event.pointerId, last: cell, pendingRotate }
+  } else if (tool === 'move') {
+    if (!editor.beginStroke()) return
+    gesture.value = { kind: 'move', pointerId: event.pointerId, start: cell }
+    moveOffset.value = { x: 0, y: 0 }
   } else {
     if (!editor.beginStroke()) return
     editor.eraseAt(cell.x, cell.y)
@@ -363,9 +427,16 @@ function onPointerMove(event: PointerEvent) {
     return
   }
   altHeld.value = event.altKey
+  moveKeyHeld.value = isMoveModifierPressed(event)
   const cell = cellAt(event)
   if (!sameCell(hover.value, cell)) hover.value = cell
-  if (!current || current.pointerId !== event.pointerId || sameCell(current.last, cell)) return
+  if (!current || current.pointerId !== event.pointerId) return
+  if (current.kind === 'move') {
+    const offset = { x: cell.x - current.start.x, y: cell.y - current.start.y }
+    if (!sameCell(moveOffset.value, offset)) moveOffset.value = offset
+    return
+  }
+  if (sameCell(current.last, cell)) return
 
   // 素早く動かしても途切れないよう、前回のマスから直線上のマスをすべて処理する
   for (const step of lineCells(current.last, cell)) {
@@ -387,7 +458,12 @@ function finishGesture(event: PointerEvent, cancelled: boolean) {
     container.value.releasePointerCapture(event.pointerId)
   }
   if (current.kind === 'pan') return
-  if (!cancelled && current.kind === 'paint' && current.pendingRotate) {
+  if (current.kind === 'move') {
+    const offset = moveOffset.value
+    moveOffset.value = null
+    // 離した時点で確定し、キャンバス範囲外に出たタイルは削除する
+    if (!cancelled && offset) editor.moveTiles(offset.x, offset.y)
+  } else if (!cancelled && current.kind === 'paint' && current.pendingRotate) {
     editor.rotateAt(current.pendingRotate.x, current.pendingRotate.y)
   }
   editor.endStroke()
@@ -413,6 +489,10 @@ function onKeyDown(event: KeyboardEvent) {
     altHeld.value = true
     return
   }
+  if (event.key === MOVE_MODIFIER_KEY) {
+    moveKeyHeld.value = true
+    return
+  }
   if (event.code !== 'Space') return
   // ページのスクロールやフォーカス中のボタンの押下を防ぐ
   event.preventDefault()
@@ -424,6 +504,10 @@ function onKeyUp(event: KeyboardEvent) {
     altHeld.value = false
     return
   }
+  if (event.key === MOVE_MODIFIER_KEY) {
+    moveKeyHeld.value = false
+    return
+  }
   if (event.code !== 'Space') return
   if (!isEditableTarget(event.target)) event.preventDefault()
   spaceHeld.value = false
@@ -432,6 +516,7 @@ function onKeyUp(event: KeyboardEvent) {
 function onBlur() {
   spaceHeld.value = false
   altHeld.value = false
+  moveKeyHeld.value = false
 }
 
 watch(
@@ -440,6 +525,7 @@ watch(
     if (locked) {
       spaceHeld.value = false
       altHeld.value = false
+      moveKeyHeld.value = false
       hover.value = null
     }
   },

@@ -203,6 +203,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
     <AppToolbar
       @new="onNew"
       @resize="showResize = true"
+      @trim="editor.trim()"
       @load="onLoad"
       @save="onSave"
       @export="showExport = true"

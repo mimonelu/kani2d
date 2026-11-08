@@ -236,6 +236,82 @@ describe('editor store', () => {
     expect(store.tileAt(1, 1)).toBeDefined()
   })
 
+  it('moves all tiles of the active layer as one history entry', () => {
+    const store = createEditorStore()
+    store.resize(4, 4)
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.paintAt(3, 3)
+    store.endStroke()
+    store.addLayer()
+    store.beginStroke()
+    store.paintAt(1, 1)
+    store.endStroke()
+
+    store.beginStroke()
+    expect(store.moveTiles(1, 0)).toBe(true)
+    store.endStroke()
+    expect(store.tileAt(2, 1)).toBeDefined()
+    expect(store.tileAt(1, 1)).toBeUndefined()
+    expect(store.doc.value.layers[0]!.tiles.size).toBe(2)
+
+    // キャンバス範囲外に出たタイルは削除する
+    store.setActiveLayer(store.doc.value.layers[0]!.id)
+    store.beginStroke()
+    store.moveTiles(-1, -1)
+    store.endStroke()
+    expect([...store.activeLayer.value.tiles.keys()]).toEqual(['2,2'])
+    store.undo()
+    expect(store.tileAt(0, 0)).toBeDefined()
+    expect(store.tileAt(3, 3)).toBeDefined()
+  })
+
+  it('does not record moves without changes', () => {
+    const store = createEditorStore()
+    store.beginStroke()
+    expect(store.moveTiles(2, 2)).toBe(false)
+    store.endStroke()
+    store.beginStroke()
+    store.paintAt(0, 0)
+    store.endStroke()
+    store.beginStroke()
+    expect(store.moveTiles(0, 0)).toBe(false)
+    store.endStroke()
+    expect(store.moveTiles(1, 1)).toBe(false)
+    store.undo()
+    expect(store.canUndo.value).toBe(false)
+  })
+
+  it('trims the canvas to the tiles of all layers with undo', () => {
+    const store = createEditorStore()
+    expect(store.canTrim.value).toBe(false)
+    store.trim()
+    expect(store.canUndo.value).toBe(false)
+
+    store.resize(8, 8)
+    store.beginStroke()
+    store.paintAt(2, 3)
+    store.endStroke()
+    expect(store.canTrim.value).toBe(true)
+    store.addLayer()
+    store.beginStroke()
+    store.paintAt(5, 4)
+    store.endStroke()
+    // 非表示のレイヤーのタイルも含める
+    store.toggleLayerVisibility(store.activeLayerId.value)
+
+    store.trim()
+    expect(store.doc.value).toMatchObject({ width: 4, height: 2 })
+    expect(store.doc.value.layers[0]!.tiles.has('0,0')).toBe(true)
+    expect(store.doc.value.layers[1]!.tiles.has('3,1')).toBe(true)
+    const trimmed = store.doc.value
+    store.trim()
+    expect(store.doc.value).toBe(trimmed)
+
+    store.undo()
+    expect(store.doc.value).toMatchObject({ width: 8, height: 8 })
+  })
+
   it('loads files and clears history', () => {
     const source = createEditorStore()
     source.resize(4, 3)

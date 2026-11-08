@@ -2,21 +2,26 @@ import { describe, expect, it } from 'vitest'
 import { BACKGROUND_LAYER_NAME } from './constants'
 import {
   addLayer,
+  contentBounds,
   countTilesRemovedByResize,
   createDocument,
+  cropDocument,
   deleteLayer,
   duplicateLayer,
   eraseTile,
   getTile,
+  hasTiles,
   lineCells,
   moveLayer,
   nextShape,
+  offsetTiles,
   paintTile,
   parseCanvasSize,
   resizeDocument,
   resizeOffset,
   rotateTile,
   setLayerVisible,
+  trimDocument,
 } from './document'
 import { Shape, type TileMap } from './types'
 
@@ -135,6 +140,47 @@ describe('document', () => {
     expect([...bottomRight.layers[0]!.tiles.keys()]).toEqual(['1,1'])
     const bottom = resizeDocument(doc, 4, 1, { x: 0.5, y: 1 })
     expect([...bottom.layers[0]!.tiles.keys()]).toEqual(['3,0'])
+  })
+
+  it('offsets tiles and removes those outside', () => {
+    const tiles: TileMap = new Map()
+    paintTile(tiles, 0, 0, '#FF0000', Shape.TopLeft)
+    paintTile(tiles, 2, 1, '#00FF00')
+    const moved = offsetTiles(tiles, 1, 1, { width: 3, height: 3 })
+    expect([...moved.values()]).toEqual([{ x: 1, y: 1, color: '#FF0000', shape: Shape.TopLeft }])
+    expect(tiles.size).toBe(2)
+    expect(offsetTiles(tiles, 0, 0, { width: 3, height: 3 }).get('2,1')).toBe(tiles.get('2,1'))
+  })
+
+  it('crops to an area that may extend beyond the canvas', () => {
+    const doc = createDocument(4, 4)
+    paintTile(doc.layers[0]!.tiles, 1, 1, '#FF0000')
+    paintTile(doc.layers[0]!.tiles, 3, 3, '#00FF00')
+    const cropped = cropDocument(doc, 1, 1, 2, 2)
+    expect(cropped).toMatchObject({ width: 2, height: 2 })
+    expect([...cropped.layers[0]!.tiles.keys()]).toEqual(['0,0'])
+    const extended = cropDocument(doc, -1, -2, 6, 6)
+    expect([...extended.layers[0]!.tiles.keys()]).toEqual(['2,3', '4,5'])
+    expect(() => cropDocument(doc, 0, 0, 0, 1)).toThrow()
+  })
+
+  it('trims to the tiles of all layers', () => {
+    const doc = createDocument(8, 8)
+    expect(hasTiles(doc)).toBe(false)
+    expect(contentBounds(doc)).toBeNull()
+    expect(trimDocument(doc)).toBe(doc)
+
+    paintTile(doc.layers[0]!.tiles, 2, 3, '#FF0000')
+    const withLayer = setLayerVisible(addLayer(doc, 0).doc, 1, false)
+    paintTile(withLayer.layers[1]!.tiles, 5, 6, '#00FF00')
+    expect(hasTiles(withLayer)).toBe(true)
+    expect(contentBounds(withLayer)).toEqual({ x: 2, y: 3, width: 4, height: 4 })
+    const trimmed = trimDocument(withLayer)
+    expect(trimmed).toMatchObject({ width: 4, height: 4 })
+    expect([...trimmed.layers[0]!.tiles.keys()]).toEqual(['0,0'])
+    expect([...trimmed.layers[1]!.tiles.keys()]).toEqual(['3,3'])
+    expect(trimmed.layers[1]!.visible).toBe(false)
+    expect(trimDocument(trimmed)).toBe(trimmed)
   })
 
   it('toggles layer visibility and keeps it when duplicating', () => {

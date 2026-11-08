@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Eraser, Hand, Pencil, Pipette } from '@lucide/vue'
+import { Eraser, Hand, Move, Pencil, Pipette } from '@lucide/vue'
 import type { Component } from 'vue'
 import { TOOLS, toolTitle, type Tool } from '../model/tools'
 import { editor } from '../store/editor'
@@ -10,6 +10,7 @@ const ICONS: Record<Tool, Component> = {
   draw: Pencil,
   erase: Eraser,
   pick: Pipette,
+  move: Move,
   pan: Hand,
 }
 </script>

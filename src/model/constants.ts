@@ -5,6 +5,7 @@ export const APP_NAME = 'Kani2D'
 export const BACKGROUND_LAYER_NAME = 'Background'
 export const LAYER_NAME_PREFIX = 'Layer'
 export const COPY_SUFFIX = 'copy'
+export const SPRITE_NAME_PREFIX = 'sprite_'
 
 export const DEFAULT_CANVAS_SIZE = 32
 /** ガイドラインの間隔の初期値（マス） */
@@ -16,7 +17,7 @@ export const FALLBACK_FILE_NAME = 'kani2d'
 
 export const FILE_EXTENSION = '.ka2'
 export const FILE_FORMAT_ID = 'kani2d'
-export const FILE_FORMAT_VERSION = 3
+export const FILE_FORMAT_VERSION = 4
 
 export const HISTORY_LIMIT = 100
 

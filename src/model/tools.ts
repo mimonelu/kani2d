@@ -1,7 +1,7 @@
 import { IS_MAC } from '../utils/platform'
 
 /** 左クリック・左ドラッグの操作 */
-export type Tool = 'draw' | 'erase' | 'fill' | 'pick' | 'move' | 'pan'
+export type Tool = 'draw' | 'erase' | 'fill' | 'pick' | 'move' | 'sprite' | 'pan'
 
 export interface ToolInfo {
   tool: Tool
@@ -31,6 +31,7 @@ export const TOOLS: readonly ToolInfo[] = [
     macAlternative: 'Option+click',
   },
   { tool: 'move', label: 'Move layer', code: 'KeyV', key: 'V', alternative: 'Ctrl+drag', macAlternative: '⌘+drag' },
+  { tool: 'sprite', label: 'Sprite', code: 'KeyS', key: 'S' },
   { tool: 'pan', label: 'Pan', code: 'KeyH', key: 'H', alternative: 'Space+drag' },
 ]
 

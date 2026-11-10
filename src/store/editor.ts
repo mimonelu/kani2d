@@ -9,7 +9,7 @@ import {
   eraseTile,
   fillTiles,
   getTile,
-  hasTiles,
+  hasContent,
   isInside,
   isShape,
   moveLayer as moveLayerInDoc,
@@ -24,9 +24,24 @@ import {
 } from '../model/document'
 import { baseName, parseDocument, serializeDocument } from '../model/fileFormat'
 import { History } from '../model/history'
+import {
+  addSprite as addSpriteToDoc,
+  deleteSprite as deleteSpriteFromDoc,
+  renameSprite as renameSpriteInDoc,
+  setSpriteRect as setSpriteRectInDoc,
+} from '../model/sprites'
 import { DEFAULT_COLOR, PALETTE } from '../model/palette'
 import { DEFAULT_TOOL, isTool, type Tool } from '../model/tools'
-import { Shape, type Doc, type GuideSpacing, type Layer, type ResizeAnchor, type Tile } from '../model/types'
+import {
+  Shape,
+  type Doc,
+  type GuideSpacing,
+  type Layer,
+  type Rect,
+  type ResizeAnchor,
+  type Sprite,
+  type Tile,
+} from '../model/types'
 
 interface Snapshot {
   doc: Doc
@@ -82,6 +97,8 @@ export function createEditorStore() {
   const selectedShape = ref<Shape>(Shape.Square)
   /** 左クリック・左ドラッグの操作。自動保存の対象外 */
   const activeTool = ref<Tool>(DEFAULT_TOOL)
+  /** 選択中のスプライト。履歴と自動保存の対象外 */
+  const selectedSpriteId = ref<string | null>(null)
   /** 増えるたびにキャンバスの表示を初期状態に戻す */
   const viewResetToken = ref(0)
   const history = new History<Snapshot>(HISTORY_LIMIT)
@@ -97,7 +114,11 @@ export function createEditorStore() {
   const canUndo = computed(() => historyVersion.value >= 0 && history.canUndo)
   const canRedo = computed(() => historyVersion.value >= 0 && history.canRedo)
   /** 自動切り抜きできるか。ストローク中のタイル変更も反映するため revision に依存させる */
-  const canTrim = computed(() => revision.value >= 0 && hasTiles(doc.value))
+  const canTrim = computed(() => revision.value >= 0 && hasContent(doc.value))
+  /** 元に戻すなどで消えたスプライトは選択しない */
+  const selectedSprite = computed<Sprite | null>(
+    () => doc.value.sprites.find((sprite) => sprite.id === selectedSpriteId.value) ?? null,
+  )
 
   function snapshot(): Snapshot {
     return { doc: doc.value, activeLayerId: activeLayerId.value }
@@ -129,6 +150,7 @@ export function createEditorStore() {
     savedDoc.value = saved ? next : null
     docName.value = name || undefined
     activeLayerId.value = next.layers[0]!.id
+    selectedSpriteId.value = null
     revision.value++
     viewResetToken.value++
   }
@@ -217,6 +239,40 @@ export function createEditorStore() {
   function setGuideSpacing(spacing: GuideSpacing): void {
     const next = setGuideSpacingInDoc(doc.value, spacing)
     if (next !== doc.value) commit(next)
+  }
+
+  function selectSprite(id: string | null): void {
+    selectedSpriteId.value = id !== null && doc.value.sprites.some((sprite) => sprite.id === id) ? id : null
+  }
+
+  /** スプライトを作成して選択する。置けない場合は false を返す */
+  function addSprite(rect: Rect): boolean {
+    if (stroke) return false
+    const result = addSpriteToDoc(doc.value, rect)
+    if (!result) return false
+    commit(result.doc)
+    selectedSpriteId.value = result.sprite.id
+    return true
+  }
+
+  /** スプライトの位置とサイズを変更する。置けない場合や変更が無い場合は false を返す */
+  function setSpriteRect(id: string, rect: Rect): boolean {
+    const next = setSpriteRectInDoc(doc.value, id, rect)
+    if (next === doc.value) return false
+    commit(next)
+    return true
+  }
+
+  function renameSprite(id: string, name: string): void {
+    const next = renameSpriteInDoc(doc.value, id, name)
+    if (next !== doc.value) commit(next)
+  }
+
+  function deleteSprite(id: string): void {
+    const next = deleteSpriteFromDoc(doc.value, id)
+    if (next === doc.value) return
+    commit(next)
+    if (selectedSpriteId.value === id) selectedSpriteId.value = null
   }
 
   function selectColor(color: string): void {
@@ -395,6 +451,8 @@ export function createEditorStore() {
     selectedColor,
     selectedShape,
     activeTool,
+    selectedSpriteId,
+    selectedSprite,
     viewResetToken,
     isDirty,
     canUndo,
@@ -418,6 +476,11 @@ export function createEditorStore() {
     selectColor,
     selectShape,
     selectTool,
+    selectSprite,
+    addSprite,
+    setSpriteRect,
+    renameSprite,
+    deleteSprite,
     pickAt,
     fillAt,
     tileAt,

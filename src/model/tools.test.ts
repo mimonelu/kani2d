@@ -8,6 +8,7 @@ describe('tools', () => {
     expect(toolForKeyCode('KeyG')).toBe('fill')
     expect(toolForKeyCode('KeyI')).toBe('pick')
     expect(toolForKeyCode('KeyV')).toBe('move')
+    expect(toolForKeyCode('KeyS')).toBe('sprite')
     expect(toolForKeyCode('KeyH')).toBe('pan')
     expect(toolForKeyCode('KeyZ')).toBeUndefined()
   })
@@ -19,6 +20,7 @@ describe('tools', () => {
       'Fill (G)',
       'Pick shape and color (I / Alt+click)',
       'Move layer (V / Ctrl+drag)',
+      'Sprite (S)',
       'Pan (H / Space+drag)',
     ])
     expect(TOOLS.map((info) => toolTitle(info, true))).toEqual([
@@ -27,6 +29,7 @@ describe('tools', () => {
       'Fill (G)',
       'Pick shape and color (I / Option+click)',
       'Move layer (V / ⌘+drag)',
+      'Sprite (S)',
       'Pan (H / Space+drag)',
     ])
   })

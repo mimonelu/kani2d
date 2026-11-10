@@ -12,6 +12,7 @@ const lastSettings = {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FALLBACK_FILE_NAME, MAX_EXPORT_DIMENSION } from '../model/constants'
 import { serializeTiles } from '../model/fileFormat'
+import { SHEET_EXTENSION, createSheetData, serializeSheetData } from '../model/sheet'
 import type { RasterInput, RasterOutput } from '../model/raster'
 import { RasterCancelledError, RasterClient } from '../render/rasterClient'
 import { editor } from '../store/editor'
@@ -29,6 +30,7 @@ const PREVIEW_DELAY = 150
 const { doc, docName } = editor
 // ポップアップ表示中は編集できないため、開いた時点の内容を出力する。非表示のレイヤーは含めない
 const source = doc.value
+const fileName = docName.value ?? FALLBACK_FILE_NAME
 const layers = source.layers.filter((layer) => layer.visible).map((layer) => serializeTiles(layer.tiles))
 
 const tileSizeInput = ref<string | number>(lastSettings.tileSize)
@@ -150,14 +152,25 @@ async function exportImage() {
   previewError.value = null
   try {
     const blob = await client.renderPng(createInput(tileSize.value))
-    downloadBlob(blob, `${docName.value ?? FALLBACK_FILE_NAME}.png`)
-    emit('close')
+    // 続けてシートを出力できるよう、ポップアップは閉じない
+    downloadBlob(blob, `${fileName}.png`)
   } catch (e) {
     if (e instanceof RasterCancelledError) return
     previewError.value = e instanceof Error ? e.message : String(e)
   } finally {
     exporting.value = false
   }
+}
+
+/**
+ * スプライトシートの情報（Godot の TexturePacker Importer 用の `.tpsheet`）を出力する
+ * - 位置とサイズを出力画像と一致させるため、PNG と同じタイルサイズを使う
+ * - 1 回の操作で複数のファイルをダウンロードすると、ブラウザが許可を求める場合があるため、PNG とは別に出力する
+ */
+function exportSheet() {
+  if (error.value !== null || tileSize.value === null || source.sprites.length === 0) return
+  const data = createSheetData(source, tileSize.value, `${fileName}.png`)
+  downloadBlob(new Blob([serializeSheetData(data)], { type: 'application/json' }), `${fileName}${SHEET_EXTENSION}`)
 }
 
 onMounted(() => {
@@ -173,7 +186,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <BaseModal title="Export PNG" wide @close="emit('close')">
+  <BaseModal title="Export" wide @close="emit('close')">
     <div ref="previewBox" class="preview checker-bg">
       <canvas v-show="error === null" ref="previewCanvas" class="preview__canvas" />
       <p v-if="error !== null" class="preview__message">Preview is unavailable.</p>
@@ -204,17 +217,35 @@ onBeforeUnmount(() => {
         <template v-if="previewScaled && error === null"> (preview is scaled down)</template>
       </p>
     </form>
+    <p v-if="source.sprites.length > 0" class="sheet-note">
+      Sprite sheet: {{ source.sprites.length }} {{ source.sprites.length === 1 ? 'sprite' : 'sprites' }}. Put
+      {{ fileName }}{{ SHEET_EXTENSION }} next to {{ fileName }}.png and import it with the TexturePacker Importer
+      plugin for Godot.
+    </p>
     <p v-if="error !== null" class="error-text">{{ error }}</p>
     <p v-if="previewError !== null" class="error-text">{{ previewError }}</p>
     <template #footer>
-      <button type="button" class="button" @click="emit('close')">Cancel</button>
+      <button type="button" class="button" @click="emit('close')">Close</button>
+      <button
+        type="button"
+        class="button"
+        :title="
+          source.sprites.length === 0
+            ? 'Create sprites with the Sprite tool to export a sprite sheet'
+            : `Export ${fileName}${SHEET_EXTENSION} for the TexturePacker Importer plugin for Godot`
+        "
+        :disabled="error !== null || exporting || source.sprites.length === 0"
+        @click="exportSheet"
+      >
+        Export sheet
+      </button>
       <button
         type="submit"
         form="export-form"
         class="button button--primary"
         :disabled="error !== null || exporting"
       >
-        {{ exporting ? 'Exporting…' : 'Export' }}
+        {{ exporting ? 'Exporting…' : 'Export PNG' }}
       </button>
     </template>
   </BaseModal>
@@ -270,6 +301,10 @@ onBeforeUnmount(() => {
   gap: 6px;
   height: 32px;
   cursor: pointer;
+}
+
+.sheet-note {
+  color: var(--color-text-dim);
 }
 
 .info {

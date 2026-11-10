@@ -461,3 +461,52 @@ describe('editor store', () => {
     expect(store.isDirty.value).toBe(false)
   })
 })
+
+describe('editor store sprites', () => {
+  it('adds, edits and deletes sprites with history', () => {
+    const store = createEditorStore()
+    expect(store.canTrim.value).toBe(false)
+    expect(store.addSprite({ x: 0, y: 0, width: 2, height: 2 })).toBe(true)
+    const id = store.selectedSpriteId.value!
+    expect(store.selectedSprite.value?.name).toBe('sprite_1')
+    expect(store.isDirty.value).toBe(true)
+    expect(store.canTrim.value).toBe(true)
+    expect(store.addSprite({ x: 1, y: 1, width: 2, height: 2 })).toBe(false)
+
+    expect(store.setSpriteRect(id, { x: 4, y: 4, width: 3, height: 2 })).toBe(true)
+    store.renameSprite(id, 'hero')
+    expect(store.selectedSprite.value).toMatchObject({ name: 'hero', x: 4, y: 4, width: 3, height: 2 })
+
+    store.deleteSprite(id)
+    expect(store.doc.value.sprites).toHaveLength(0)
+    expect(store.selectedSprite.value).toBeNull()
+
+    store.undo()
+    expect(store.doc.value.sprites[0]).toMatchObject({ id, name: 'hero' })
+    store.undo()
+    store.undo()
+    expect(store.doc.value.sprites[0]).toMatchObject({ name: 'sprite_1', x: 0, y: 0 })
+    store.undo()
+    expect(store.doc.value.sprites).toHaveLength(0)
+    expect(store.isDirty.value).toBe(false)
+  })
+
+  it('clears the sprite selection on new documents and ignores missing sprites', () => {
+    const store = createEditorStore()
+    store.addSprite({ x: 0, y: 0, width: 1, height: 1 })
+    store.selectSprite('missing')
+    expect(store.selectedSpriteId.value).toBeNull()
+    store.selectSprite(store.doc.value.sprites[0]!.id)
+    store.newDocument()
+    expect(store.selectedSpriteId.value).toBeNull()
+    expect(store.doc.value.sprites).toHaveLength(0)
+  })
+
+  it('keeps sprites when restoring the persisted state', () => {
+    const source = createEditorStore()
+    source.addSprite({ x: 1, y: 2, width: 3, height: 4 })
+    const store = createEditorStore()
+    store.restoreState(source.exportState())
+    expect(store.doc.value.sprites[0]).toMatchObject({ name: 'sprite_1', x: 1, y: 2, width: 3, height: 4 })
+  })
+})

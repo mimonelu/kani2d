@@ -11,6 +11,7 @@ import NewModal from './components/NewModal.vue'
 import ResizeModal from './components/ResizeModal.vue'
 import SaveAsModal from './components/SaveAsModal.vue'
 import ShapePicker from './components/ShapePicker.vue'
+import SpriteModal from './components/SpriteModal.vue'
 import ToolPicker from './components/ToolPicker.vue'
 import { FALLBACK_FILE_NAME, FILE_EXTENSION } from './model/constants'
 import { FileFormatError, normalizeFileName } from './model/fileFormat'
@@ -45,6 +46,11 @@ const showResize = ref(false)
 const showGuides = ref(false)
 const showExport = ref(false)
 const showSaveAs = ref(false)
+/** 名前を編集するスプライト */
+const editingSpriteId = ref<string | null>(null)
+const editingSprite = computed(
+  () => editor.doc.value.sprites.find((sprite) => sprite.id === editingSpriteId.value) ?? null,
+)
 const dialog = shallowRef<Dialog | null>(null)
 const fileInput = ref<HTMLInputElement>()
 const saving = ref(false)
@@ -56,6 +62,7 @@ const modalOpen = computed(
     showGuides.value ||
     showExport.value ||
     showSaveAs.value ||
+    editingSprite.value !== null ||
     dialog.value !== null,
 )
 
@@ -232,6 +239,17 @@ function onKeyDown(event: KeyboardEvent) {
     if (tool) {
       event.preventDefault()
       editor.selectTool(tool)
+      return
+    }
+    // Sprite ツールでは、選択中のスプライトを Delete / Backspace キーで削除し、Escape キーで選択を解除する
+    const sprite = editor.selectedSprite.value
+    if (editor.activeTool.value !== 'sprite' || !sprite) return
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault()
+      editor.deleteSprite(sprite.id)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      editor.selectSprite(null)
     }
     return
   }
@@ -266,7 +284,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
       @export="showExport = true"
     />
     <main class="workspace">
-      <EditorCanvas class="workspace__canvas" :locked="modalOpen" />
+      <EditorCanvas class="workspace__canvas" :locked="modalOpen" @edit-sprite="editingSpriteId = $event" />
       <aside class="workspace__sidebar">
         <LayerList />
         <ToolPicker />
@@ -288,6 +306,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
     <GuidesModal v-if="showGuides" @close="showGuides = false" />
     <ExportModal v-if="showExport" @close="showExport = false" />
     <SaveAsModal v-if="showSaveAs" @close="showSaveAs = false" @save="onSaveAs" />
+    <SpriteModal
+      v-if="editingSprite"
+      :key="editingSprite.id"
+      :sprite="editingSprite"
+      @close="editingSpriteId = null"
+    />
     <DialogModal
       v-if="dialog"
       :title="dialog.title"

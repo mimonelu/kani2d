@@ -7,7 +7,8 @@ import {
 } from './constants'
 import { createLayer, isShape, isValidCanvasSize, tileKey } from './document'
 import { COLOR_PATTERN } from './palette'
-import type { Doc, GuideSpacing, Shape, TileMap } from './types'
+import { clipRect, createSprite, normalizeSpriteName, rectsOverlap, validateSpriteName } from './sprites'
+import type { Doc, GuideSpacing, Shape, Sprite, TileMap } from './types'
 
 /** `[x, y, 色, 形状]` */
 export type SerializedTile = [number, number, string, Shape]
@@ -19,6 +20,15 @@ export interface SerializedLayer {
   tiles: SerializedTile[]
 }
 
+/** 位置とサイズの単位はマス */
+export interface SerializedSprite {
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface SerializedDoc {
   format: typeof FILE_FORMAT_ID
   version: typeof FILE_FORMAT_VERSION
@@ -28,6 +38,8 @@ export interface SerializedDoc {
   guideSpacing: { width: number; height: number }
   /** 背面から前面の順 */
   layers: SerializedLayer[]
+  /** スプライトシートの各スプライト。バージョン 4 で追加。省略時は無いものとみなす */
+  sprites: SerializedSprite[]
 }
 
 export class FileFormatError extends Error {
@@ -55,6 +67,7 @@ export function toSerialized(doc: Doc): SerializedDoc {
       visible: layer.visible,
       tiles: serializeTiles(layer.tiles),
     })),
+    sprites: doc.sprites.map(({ name, x, y, width, height }) => ({ name, x, y, width, height })),
   }
 }
 
@@ -111,6 +124,42 @@ function parseGuideSpacing(value: unknown): GuideSpacing {
   return { width: value.width, height: value.height }
 }
 
+/** キャンバス範囲からはみ出す部分は切り詰め、範囲外のスプライトは無視する */
+function parseSprites(value: unknown, width: number, height: number): Sprite[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new FileFormatError('The file has an invalid sprite list.')
+  const sprites: Sprite[] = []
+  value.forEach((raw: unknown, index: number) => {
+    if (
+      !isRecord(raw) ||
+      typeof raw.name !== 'string' ||
+      !isInteger(raw.x) ||
+      !isInteger(raw.y) ||
+      !isInteger(raw.width) ||
+      !isInteger(raw.height) ||
+      raw.width < 1 ||
+      raw.height < 1
+    ) {
+      throw new FileFormatError(`Sprite ${index + 1} is invalid.`)
+    }
+    // 範囲外で無視するスプライトとの重複は問題にならないため、範囲内のものとのみ比較する
+    const nameError = validateSpriteName(sprites, raw.name)
+    if (nameError === 'empty' || nameError === 'invalid') {
+      throw new FileFormatError(`Sprite ${index + 1} has an invalid name.`)
+    }
+    const rect = clipRect({ x: raw.x, y: raw.y, width: raw.width, height: raw.height }, { width, height })
+    if (!rect) return
+    if (nameError === 'duplicate') {
+      throw new FileFormatError(`Sprite ${index + 1} has the same name as another sprite.`)
+    }
+    if (sprites.some((sprite) => rectsOverlap(sprite, rect))) {
+      throw new FileFormatError(`Sprite ${index + 1} overlaps another sprite.`)
+    }
+    sprites.push(createSprite(normalizeSpriteName(raw.name)!, rect))
+  })
+  return sprites
+}
+
 export function parseDocument(text: string): Doc {
   let data: unknown
   try {
@@ -149,7 +198,8 @@ export function parseDocument(text: string): Doc {
     // 先頭は名前によらず背景レイヤーとして扱う
     return createLayer(index === 0 ? BACKGROUND_LAYER_NAME : raw.name, tiles, raw.visible !== false)
   })
-  return { width, height, guideSpacing, layers }
+  const sprites = parseSprites(data.sprites, width, height)
+  return { width, height, guideSpacing, layers, sprites }
 }
 
 /** ファイル名から拡張子を除いた部分を返す */

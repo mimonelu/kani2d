@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { CENTER_ANCHOR } from '../model/constants'
-import { countTilesRemovedByResize, parseCanvasSize } from '../model/document'
+import { countSpritesChangedByResize, countTilesRemovedByResize, parseCanvasSize } from '../model/document'
 import type { ResizeAnchor } from '../model/types'
 import { editor } from '../store/editor'
 import AnchorPicker from './AnchorPicker.vue'
@@ -28,6 +28,16 @@ const removedCount = computed(() =>
     : countTilesRemovedByResize(doc.value, width.value, height.value, anchor.value),
 )
 
+const spriteChanges = computed(() =>
+  width.value === null || height.value === null
+    ? { cropped: 0, removed: 0 }
+    : countSpritesChangedByResize(doc.value, width.value, height.value, anchor.value),
+)
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`
+}
+
 function submit() {
   if (width.value === null || height.value === null) return
   editor.resize(width.value, height.value, anchor.value)
@@ -45,9 +55,17 @@ function submit() {
         :shrink-y="height !== null && height < doc.height"
       />
       <p v-if="!valid" class="error-text">Enter whole numbers of 1 or more.</p>
-      <p v-else-if="removedCount > 0" class="error-text">
-        {{ removedCount }} {{ removedCount === 1 ? 'tile' : 'tiles' }} outside the new size will be removed.
-      </p>
+      <template v-else>
+        <p v-if="removedCount > 0" class="error-text">
+          {{ plural(removedCount, 'tile', 'tiles') }} outside the new size will be removed.
+        </p>
+        <p v-if="spriteChanges.removed > 0" class="error-text">
+          {{ plural(spriteChanges.removed, 'sprite', 'sprites') }} outside the new size will be removed.
+        </p>
+        <p v-if="spriteChanges.cropped > 0" class="error-text">
+          {{ plural(spriteChanges.cropped, 'sprite', 'sprites') }} will be cropped to the new size.
+        </p>
+      </template>
     </form>
     <template #footer>
       <button type="button" class="button" @click="emit('close')">Cancel</button>

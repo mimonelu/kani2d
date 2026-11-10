@@ -6,6 +6,7 @@ import {
   DEFAULT_GUIDE_SPACING,
   LAYER_NAME_PREFIX,
 } from './constants'
+import { countSpritesChangedByOffset, offsetSprites } from './sprites'
 import {
   SHAPE_COUNT,
   SHAPE_ORDER,
@@ -57,6 +58,7 @@ export function createDocument(width = DEFAULT_CANVAS_SIZE, height = DEFAULT_CAN
     height,
     guideSpacing: { width: DEFAULT_GUIDE_SPACING, height: DEFAULT_GUIDE_SPACING },
     layers: [createLayer(BACKGROUND_LAYER_NAME)],
+    sprites: [],
   }
 }
 
@@ -178,16 +180,22 @@ export function offsetTiles(
   return result
 }
 
-/** (left, top) を左上とする範囲でキャンバスを切り抜き、範囲外となるタイルを削除する。範囲はキャンバスの外を含んでもよい */
+/**
+ * (left, top) を左上とする範囲でキャンバスを切り抜く。範囲はキャンバスの外を含んでもよい
+ * - 範囲外となるタイルを削除する
+ * - スプライトは範囲で切り詰め、範囲外となるものは削除する
+ */
 export function cropDocument(doc: Doc, left: number, top: number, width: number, height: number): Doc {
   if (!isValidCanvasSize(width) || !isValidCanvasSize(height)) {
     throw new RangeError(`Invalid canvas size: ${width} x ${height}`)
   }
-  const layers = doc.layers.map((layer) => ({ ...layer, tiles: offsetTiles(layer.tiles, -left, -top, { width, height }) }))
-  return { ...doc, width, height, layers }
+  const size = { width, height }
+  const layers = doc.layers.map((layer) => ({ ...layer, tiles: offsetTiles(layer.tiles, -left, -top, size) }))
+  const sprites = offsetSprites(doc.sprites, -left, -top, size)
+  return { ...doc, width, height, layers, sprites }
 }
 
-/** 基準位置を保ってリサイズし、範囲外となるタイルを削除する */
+/** 基準位置を保ってリサイズし、範囲外となるタイルを削除する。スプライトは切り詰め、範囲外となるものは削除する */
 export function resizeDocument(doc: Doc, width: number, height: number, anchor: ResizeAnchor = CENTER_ANCHOR): Doc {
   const dx = resizeOffset(doc.width, width, anchor.x)
   const dy = resizeOffset(doc.height, height, anchor.y)
@@ -212,16 +220,42 @@ export function countTilesRemovedByResize(
   return count
 }
 
+/** リサイズで切り詰められる・削除されるスプライトの数を返す */
+export function countSpritesChangedByResize(
+  doc: Doc,
+  width: number,
+  height: number,
+  anchor: ResizeAnchor = CENTER_ANCHOR,
+): { cropped: number; removed: number } {
+  const dx = resizeOffset(doc.width, width, anchor.x)
+  const dy = resizeOffset(doc.height, height, anchor.y)
+  return countSpritesChangedByOffset(doc.sprites, dx, dy, { width, height })
+}
+
 export function hasTiles(doc: Doc): boolean {
   return doc.layers.some((layer) => layer.tiles.size > 0)
 }
 
-/** 全レイヤー（非表示を含む）のタイルを囲む最小の矩形を返す。タイルが無い場合は null を返す */
+/** 自動切り抜きの基準となるタイルまたはスプライトがあるか */
+export function hasContent(doc: Doc): boolean {
+  return doc.sprites.length > 0 || hasTiles(doc)
+}
+
+/**
+ * 全レイヤー（非表示を含む）のタイルとスプライトを囲む最小の矩形を返す。いずれも無い場合は null を返す
+ * - スプライトの余白が気付かれずに切り詰められないよう、スプライトも含める
+ */
 export function contentBounds(doc: Doc): Rect | null {
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
   let y1 = -Infinity
+  for (const sprite of doc.sprites) {
+    x0 = Math.min(x0, sprite.x)
+    y0 = Math.min(y0, sprite.y)
+    x1 = Math.max(x1, sprite.x + sprite.width - 1)
+    y1 = Math.max(y1, sprite.y + sprite.height - 1)
+  }
   for (const layer of doc.layers) {
     for (const tile of layer.tiles.values()) {
       x0 = Math.min(x0, tile.x)
@@ -234,7 +268,7 @@ export function contentBounds(doc: Doc): Rect | null {
   return { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }
 }
 
-/** 全レイヤーのタイルを囲む最小の矩形でキャンバスを切り抜く。タイルが無い場合や既に一致している場合はそのまま返す */
+/** 全レイヤーのタイルとスプライトを囲む最小の矩形でキャンバスを切り抜く。いずれも無い場合や既に一致している場合はそのまま返す */
 export function trimDocument(doc: Doc): Doc {
   const bounds = contentBounds(doc)
   if (!bounds) return doc

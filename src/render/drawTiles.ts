@@ -9,6 +9,14 @@ export const CANVAS_COLORS = {
   border: 'rgba(255, 255, 255, 0.18)',
   hover: 'rgba(255, 255, 255, 0.75)',
   eraseHover: 'rgba(240, 90, 80, 0.9)',
+  sprite: 'rgba(80, 170, 230, 0.9)',
+  /** Sprite ツール以外での表示 */
+  spriteDim: 'rgba(80, 170, 230, 0.5)',
+  spriteSelected: '#f06a4a',
+  spriteSelectedFill: 'rgba(240, 106, 74, 0.12)',
+  spriteInvalid: 'rgba(240, 90, 80, 0.95)',
+  spriteInvalidFill: 'rgba(240, 90, 80, 0.2)',
+  spriteHandle: '#ffffff',
 } as const
 
 /** マスの左上 (x0, y0) と右下 (x1, y1) で表した矩形に形状のパスを追加する */

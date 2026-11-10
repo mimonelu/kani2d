@@ -8,13 +8,14 @@ A browser-based editor for drawing pictures by placing 2D tiles.
 - Layers with visibility toggles, reordering, duplication and deletion
 - Save and load drawings as `.ka2` files
 - Export PNG images with a custom tile size and optional anti-aliasing
+- Define sprites on the canvas and export their positions as sprite sheet data (`.tpsheet` for the TexturePacker Importer plugin for Godot)
 - Undo / redo and autosave
 
 ## Controls
 
 | Action | Input |
 | --- | --- |
-| Select a tool | Tool buttons in the sidebar, or B (Draw) / E (Erase) / G (Fill) / I (Pick) / V (Move) / H (Pan) |
+| Select a tool | Tool buttons in the sidebar, or B (Draw) / E (Erase) / G (Fill) / I (Pick) / V (Move) / S (Sprite) / H (Pan) |
 | Select a shape | Shape buttons in the sidebar |
 | Place a tile (in the selected shape) / recolor a tile | Draw: left click or drag |
 | Rotate a tile | Draw: left click a tile of the selected color |
@@ -22,6 +23,9 @@ A browser-based editor for drawing pictures by placing 2D tiles.
 | Recolor connected tiles of the same color / fill connected empty cells | Fill: left click |
 | Pick a tile's shape and color | Pick: left click, or Alt (⌥) + click with any tool |
 | Move the active layer | Move: left drag, or Ctrl (⌘) + drag with any tool |
+| Create a sprite | Sprite: left drag on empty cells |
+| Select / move / resize a sprite | Sprite: left click / drag the sprite / drag its edges |
+| Rename or delete a sprite | Sprite: click its name label, or Delete / Backspace to delete the selected sprite |
 | Zoom | Mouse wheel |
 | Pan | Pan: left drag, or Space + drag with any tool |
 | Undo / Redo | Ctrl (⌘) + Z / Ctrl (⌘) + Shift + Z |

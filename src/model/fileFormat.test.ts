@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { addLayer, createDocument, paintTile, rotateTile, setGuideSpacing, setLayerVisible } from './document'
 import { FileFormatError, baseName, normalizeFileName, parseDocument, serializeDocument, toSerialized } from './fileFormat'
+import { addSprite } from './sprites'
 
 function sample() {
   let doc = createDocument(8, 4)
@@ -8,6 +9,8 @@ function sample() {
   doc = addLayer(doc, 0).doc
   paintTile(doc.layers[1]!.tiles, 7, 3, '#0040C0')
   rotateTile(doc.layers[1]!.tiles, 7, 3)
+  doc = addSprite(doc, { x: 4, y: 0, width: 4, height: 2 })!.doc
+  doc = addSprite(doc, { x: 0, y: 0, width: 2, height: 2 }, 'hero')!.doc
   return setGuideSpacing(setLayerVisible(doc, 1, false), { width: 8, height: 4 })
 }
 
@@ -15,13 +18,17 @@ describe('fileFormat', () => {
   it('serializes to the documented structure', () => {
     expect(toSerialized(sample())).toEqual({
       format: 'kani2d',
-      version: 3,
+      version: 4,
       width: 8,
       height: 4,
       guideSpacing: { width: 8, height: 4 },
       layers: [
         { name: 'Background', visible: true, tiles: [[1, 2, '#FF0000', 0]] },
         { name: 'Layer 1', visible: false, tiles: [[7, 3, '#0040C0', 3]] },
+      ],
+      sprites: [
+        { name: 'sprite_1', x: 4, y: 0, width: 4, height: 2 },
+        { name: 'hero', x: 0, y: 0, width: 2, height: 2 },
       ],
     })
   })
@@ -60,6 +67,28 @@ describe('fileFormat', () => {
       }),
     )
     expect(parsed.guideSpacing).toEqual({ width: 16, height: 16 })
+    expect(parsed.sprites).toEqual([])
+  })
+
+  it('crops sprites to the canvas and ignores those outside', () => {
+    const parsed = parseDocument(
+      JSON.stringify({
+        format: 'kani2d',
+        version: 4,
+        width: 4,
+        height: 4,
+        layers: [{ name: 'Background', visible: true, tiles: [] }],
+        sprites: [
+          { name: ' a ', x: -1, y: 2, width: 3, height: 4 },
+          { name: 'B', x: 4, y: 0, width: 1, height: 1 },
+          { name: 'b', x: 2, y: 0, width: 2, height: 2 },
+        ],
+      }),
+    )
+    expect(parsed.sprites.map(({ name, x, y, width, height }) => ({ name, x, y, width, height }))).toEqual([
+      { name: 'a', x: 0, y: 2, width: 2, height: 2 },
+      { name: 'b', x: 2, y: 0, width: 2, height: 2 },
+    ])
   })
 
   it('ignores tiles outside the canvas and normalizes colors', () => {
@@ -79,7 +108,7 @@ describe('fileFormat', () => {
   it.each([
     ['not json', '{'],
     ['wrong format', JSON.stringify({ format: 'other', version: 1, width: 1, height: 1, layers: [] })],
-    ['newer version', JSON.stringify({ format: 'kani2d', version: 4, width: 1, height: 1, layers: [] })],
+    ['newer version', JSON.stringify({ format: 'kani2d', version: 5, width: 1, height: 1, layers: [] })],
     ['invalid size', JSON.stringify({ format: 'kani2d', version: 1, width: 0, height: 1, layers: [] })],
     ['no layers', JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [] })],
     [
@@ -104,6 +133,40 @@ describe('fileFormat', () => {
         layers: [{ name: 'a', visible: true, tiles: [] }],
       }),
     ],
+    ...(
+      [
+        ['invalid sprite list', {}],
+        ['sprite without name', [{ x: 0, y: 0, width: 1, height: 1 }]],
+        ['sprite with blank name', [{ name: ' ', x: 0, y: 0, width: 1, height: 1 }]],
+        ['sprite with invalid name', [{ name: 'a.b', x: 0, y: 0, width: 1, height: 1 }]],
+        [
+          'sprites with the same name',
+          [
+            { name: 'a', x: 0, y: 0, width: 1, height: 1 },
+            { name: 'A', x: 1, y: 1, width: 1, height: 1 },
+          ],
+        ],
+        ['sprite with zero width', [{ name: 'a', x: 0, y: 0, width: 0, height: 1 }]],
+        ['sprite with fractional position', [{ name: 'a', x: 0.5, y: 0, width: 1, height: 1 }]],
+        [
+          'overlapping sprites',
+          [
+            { name: 'a', x: 0, y: 0, width: 2, height: 2 },
+            { name: 'b', x: 1, y: 1, width: 1, height: 1 },
+          ],
+        ],
+      ] as const
+    ).map(([label, sprites]) => [
+      label,
+      JSON.stringify({
+        format: 'kani2d',
+        version: 4,
+        width: 2,
+        height: 2,
+        layers: [{ name: 'a', visible: true, tiles: [] }],
+        sprites,
+      }),
+    ]),
     [
       'invalid shape',
       JSON.stringify({ format: 'kani2d', version: 1, width: 1, height: 1, layers: [{ name: 'a', tiles: [[0, 0, '#FFFFFF', 5]] }] }),

@@ -2,8 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DEFAULT_TILE_SIZE, TILE_SIZES } from '../model/constants'
 import { isInside, lineCells } from '../model/document'
+import { canPlaceSprite, rectFromCells, sameRect, spriteAt } from '../model/sprites'
 import type { Tool } from '../model/tools'
-import type { Cell } from '../model/types'
+import type { Cell, Rect } from '../model/types'
 import { PAINT_BUCKET_CURSOR, PIPETTE_CURSOR } from '../render/cursors'
 import { CANVAS_COLORS, appendShapePath, drawLayerTiles, fillChecker, type CellRange } from '../render/drawTiles'
 import { editor } from '../store/editor'
@@ -15,7 +16,23 @@ const props = defineProps<{
   locked: boolean
 }>()
 
-const { doc, revision, selectedColor, selectedShape, activeTool, viewResetToken, activeLayer, activeLayerId } = editor
+const emit = defineEmits<{
+  /** スプライトの名前ラベルが押された */
+  editSprite: [id: string]
+}>()
+
+const {
+  doc,
+  revision,
+  selectedColor,
+  selectedShape,
+  activeTool,
+  viewResetToken,
+  activeLayer,
+  activeLayerId,
+  selectedSpriteId,
+  selectedSprite,
+} = editor
 
 /** 市松模様の 1 マスの大きさ（CSS px） */
 const CHECKER_SIZE = 8
@@ -33,6 +50,10 @@ const PINCH_THRESHOLD = 8
 const WHEEL_GESTURE_GAP = 150
 /** macOS の Chrome / Safari がマウスホイール 1 目盛りにつき返す移動量の単位 */
 const MAC_WHEEL_DELTA = 4.000244140625
+/** スプライトの辺をつかめる範囲（CSS px） */
+const SPRITE_EDGE_HIT = 6
+/** スプライトのリサイズ用ハンドルの大きさ（CSS px） */
+const SPRITE_HANDLE_SIZE = 7
 
 const container = ref<HTMLDivElement>()
 const mainCanvas = ref<HTMLCanvasElement>()
@@ -48,16 +69,37 @@ const hover = ref<Cell | null>(null)
 const spaceHeld = ref(false)
 const altHeld = ref(false)
 const moveKeyHeld = ref(false)
+/** マウス位置（CSS px）。スプライトの辺の上かの判定に使う */
+const hoverPoint = ref<{ x: number; y: number } | null>(null)
 /** Move の操作中の移動量（マス）。操作中でなければ null */
 const moveOffset = ref<Cell | null>(null)
+
+/** スプライトのリサイズでつかんだ辺 */
+interface SpriteEdges {
+  left: boolean
+  right: boolean
+  top: boolean
+  bottom: boolean
+}
+
+/** 操作中のスプライトの範囲。id が null の場合は作成中。valid が false の場合は離しても確定しない */
+interface SpriteDraft {
+  id: string | null
+  rect: Rect
+  valid: boolean
+}
 
 type Gesture =
   | { kind: 'pan'; pointerId: number; startX: number; startY: number; originX: number; originY: number }
   | { kind: 'paint'; pointerId: number; last: Cell; pendingRotate: Cell | null }
   | { kind: 'erase'; pointerId: number; last: Cell }
   | { kind: 'move'; pointerId: number; start: Cell }
+  | { kind: 'sprite-create'; pointerId: number; start: Cell }
+  | { kind: 'sprite-move'; pointerId: number; id: string; start: Cell; origin: Rect }
+  | { kind: 'sprite-resize'; pointerId: number; id: string; origin: Rect; edges: SpriteEdges }
 
 const gesture = ref<Gesture | null>(null)
+const spriteDraft = ref<SpriteDraft | null>(null)
 
 /** 非表示のレイヤーは編集できない */
 const editable = computed(() => activeLayer.value.visible)
@@ -86,13 +128,40 @@ const hoverTool = computed<Tool>(() => {
       return 'erase'
     case 'move':
       return 'move'
+    case 'sprite-create':
+    case 'sprite-move':
+    case 'sprite-resize':
+      return 'sprite'
     default:
       return leftTool.value
   }
 })
 
+/** Sprite ツールの選択中は、名前ラベルやハンドルなどの全 UI を表示する。それ以外のツールでは矩形のみ表示する */
+const spriteMode = computed(() => activeTool.value === 'sprite')
+
+function resizeCursor(edges: SpriteEdges): string {
+  const horizontal = edges.left || edges.right
+  const vertical = edges.top || edges.bottom
+  if (horizontal && vertical) return (edges.left && edges.top) || (edges.right && edges.bottom) ? 'nwse-resize' : 'nesw-resize'
+  return horizontal ? 'ew-resize' : 'ns-resize'
+}
+
+function spriteCursor(): string {
+  const current = gesture.value
+  if (current?.kind === 'sprite-resize') return resizeCursor(current.edges)
+  if (current?.kind === 'sprite-move') return 'move'
+  if (current) return 'crosshair'
+  const edges = hoverPoint.value ? spriteEdgesAt(hoverPoint.value) : null
+  if (edges) return resizeCursor(edges)
+  if (hover.value && spriteAt(doc.value, hover.value.x, hover.value.y)) return 'move'
+  return 'crosshair'
+}
+
 const cursor = computed(() => {
   switch (hoverTool.value) {
+    case 'sprite':
+      return spriteCursor()
     case 'pan':
       return gesture.value ? 'grabbing' : 'grab'
     case 'pick':
@@ -280,9 +349,15 @@ function drawOverlay() {
     map.y(current.height) - map.y(0) + line,
   )
 
-  // マウス位置のマス
+  drawSprites(ctx, map, line, dpr)
+
+  // マウス位置のマス。Sprite ではスプライトを作成できるマスのみとする
   const tool = hoverTool.value
-  if (hover.value && hoverInside.value && tool !== 'pan' && tool !== 'move' && (tool === 'pick' || editable.value)) {
+  const highlight =
+    tool === 'sprite'
+      ? !gesture.value && hover.value !== null && !spriteAt(current, hover.value.x, hover.value.y)
+      : tool !== 'pan' && tool !== 'move' && (tool === 'pick' || editable.value)
+  if (hover.value && hoverInside.value && highlight) {
     const { x, y } = hover.value
     // Draw では空のマスに設置されるタイルを半透明で表示する。編集操作中は表示しない
     if (tool === 'draw' && !gesture.value && !editor.tileAt(x, y)) {
@@ -298,8 +373,104 @@ function drawOverlay() {
   }
 }
 
+/** 操作中のスプライトは操作後の範囲とする */
+function displayedSprites(): { id: string | null; rect: Rect; valid: boolean }[] {
+  const draft = spriteDraft.value
+  const sprites = doc.value.sprites.map((sprite) =>
+    draft && draft.id === sprite.id ? draft : { id: sprite.id, rect: sprite as Rect, valid: true },
+  )
+  if (draft && draft.id === null) sprites.push(draft)
+  return sprites
+}
+
+function drawSprites(ctx: CanvasRenderingContext2D, map: ReturnType<typeof deviceMapper>, line: number, dpr: number) {
+  const sprites = displayedSprites()
+  if (sprites.length === 0) return
+  const full = spriteMode.value
+  const selectedId = full ? selectedSpriteId.value : null
+  ctx.lineWidth = line
+  let selected: Rect | null = null
+  for (const sprite of sprites) {
+    const { rect } = sprite
+    const x0 = map.x(rect.x)
+    const y0 = map.y(rect.y)
+    const x1 = map.x(rect.x + rect.width)
+    const y1 = map.y(rect.y + rect.height)
+    const isSelected = sprite.id !== null && sprite.id === selectedId
+    const active = isSelected || sprite.id === null
+    if (!sprite.valid) {
+      ctx.fillStyle = CANVAS_COLORS.spriteInvalidFill
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0)
+    } else if (full && active) {
+      ctx.fillStyle = CANVAS_COLORS.spriteSelectedFill
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0)
+    }
+    ctx.strokeStyle = !sprite.valid
+      ? CANVAS_COLORS.spriteInvalid
+      : full && active
+        ? CANVAS_COLORS.spriteSelected
+        : full
+          ? CANVAS_COLORS.sprite
+          : CANVAS_COLORS.spriteDim
+    // 隣接するスプライトの境界が重ならないよう、矩形の内側に描く
+    ctx.strokeRect(x0 + line / 2, y0 + line / 2, x1 - x0 - line, y1 - y0 - line)
+    if (isSelected) selected = rect
+  }
+  if (!selected || gesture.value?.kind === 'sprite-move') return
+  // リサイズ用のハンドル
+  const size = Math.round(SPRITE_HANDLE_SIZE * dpr)
+  const half = Math.floor(size / 2)
+  const left = map.x(selected.x)
+  const right = map.x(selected.x + selected.width)
+  const top = map.y(selected.y)
+  const bottom = map.y(selected.y + selected.height)
+  const xs = [left, (left + right) / 2, right]
+  const ys = [top, (top + bottom) / 2, bottom]
+  const handles = new Path2D()
+  for (const [iy, hy] of ys.entries()) {
+    for (const [ix, hx] of xs.entries()) {
+      if (ix === 1 && iy === 1) continue
+      handles.rect(Math.round(hx) - half, Math.round(hy) - half, size, size)
+    }
+  }
+  ctx.fillStyle = CANVAS_COLORS.spriteHandle
+  ctx.fill(handles)
+  ctx.strokeStyle = CANVAS_COLORS.spriteSelected
+  ctx.stroke(handles)
+}
+
 watch([doc, revision, tileSize, originX, originY, viewWidth, viewHeight, moveOffset], () => requestRender(true))
-watch([hover, hoverTool, gesture, editable, activeLayerId, selectedColor, selectedShape], () => requestRender(false))
+watch(
+  [hover, hoverTool, gesture, editable, activeLayerId, selectedColor, selectedShape, spriteDraft, selectedSpriteId, spriteMode],
+  () => requestRender(false),
+)
+
+// ---- スプライトの名前ラベル ----
+
+/** Sprite ツールの選択中のみ、矩形の左上の外側に名前ラベルを表示する */
+const spriteLabels = computed(() => {
+  if (!spriteMode.value) return []
+  const draft = spriteDraft.value
+  const size = tileSize.value
+  return doc.value.sprites.map((sprite) => {
+    const rect = draft && draft.id === sprite.id ? draft.rect : sprite
+    return {
+      id: sprite.id,
+      name: sprite.name,
+      selected: sprite.id === selectedSpriteId.value,
+      left: Math.round(originX.value + rect.x * size),
+      top: Math.round(originY.value + rect.y * size),
+    }
+  })
+})
+
+/** 操作中や一時的に他のツールに切り替えている間は、ラベルを押せないようにする */
+const labelsInteractive = computed(() => leftTool.value === 'sprite' && gesture.value === null)
+
+function onLabelClick(id: string) {
+  editor.selectSprite(id)
+  emit('editSprite', id)
+}
 
 // ---- 表示位置 ----
 
@@ -389,6 +560,103 @@ function isMoveModifierPressed(event: MouseEvent): boolean {
   return IS_MAC ? event.metaKey : event.ctrlKey
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+/**
+ * 選択中のスプライトの辺の上か。辺の上でなければ null を返す
+ * - 小さなスプライトも移動できるよう、内側でつかめる範囲はスプライトの大きさに応じて狭める
+ */
+function spriteEdgesAt(point: { x: number; y: number }): SpriteEdges | null {
+  const sprite = selectedSprite.value
+  if (!sprite || !spriteMode.value) return null
+  const size = tileSize.value
+  const left = originX.value + sprite.x * size
+  const top = originY.value + sprite.y * size
+  const right = left + sprite.width * size
+  const bottom = top + sprite.height * size
+  const insideX = Math.min(SPRITE_EDGE_HIT, (right - left) / 3)
+  const insideY = Math.min(SPRITE_EDGE_HIT, (bottom - top) / 3)
+  if (point.x < left - SPRITE_EDGE_HIT || point.x > right + SPRITE_EDGE_HIT) return null
+  if (point.y < top - SPRITE_EDGE_HIT || point.y > bottom + SPRITE_EDGE_HIT) return null
+  const edges: SpriteEdges = {
+    left: point.x <= left + insideX && point.x - left < right - point.x,
+    right: point.x >= right - insideX && right - point.x <= point.x - left,
+    top: point.y <= top + insideY && point.y - top < bottom - point.y,
+    bottom: point.y >= bottom - insideY && bottom - point.y <= point.y - top,
+  }
+  return edges.left || edges.right || edges.top || edges.bottom ? edges : null
+}
+
+/** Sprite ツールの左クリック。辺の上ならリサイズ、スプライトの上なら選択して移動、空のマスなら作成を始める */
+function beginSpriteGesture(event: PointerEvent, cell: Cell): boolean {
+  const point = localPoint(event)
+  const edges = spriteEdgesAt(point)
+  const selected = selectedSprite.value
+  if (edges && selected) {
+    gesture.value = { kind: 'sprite-resize', pointerId: event.pointerId, id: selected.id, origin: selected, edges }
+    return true
+  }
+  const sprite = spriteAt(doc.value, cell.x, cell.y)
+  if (sprite) {
+    editor.selectSprite(sprite.id)
+    gesture.value = { kind: 'sprite-move', pointerId: event.pointerId, id: sprite.id, start: cell, origin: sprite }
+    return true
+  }
+  editor.selectSprite(null)
+  if (!isInside(doc.value, cell.x, cell.y)) return false
+  gesture.value = { kind: 'sprite-create', pointerId: event.pointerId, start: cell }
+  return true
+}
+
+function updateSpriteDraft(id: string | null, rect: Rect) {
+  const draft = spriteDraft.value
+  if (draft && draft.id === id && sameRect(draft.rect, rect)) return
+  spriteDraft.value = { id, rect, valid: canPlaceSprite(doc.value, rect, id ?? undefined) }
+}
+
+/** Sprite ツールのドラッグ。範囲はキャンバス内に収め、他のスプライトと重なる場合は無効とする */
+function continueSpriteGesture(
+  current: Extract<Gesture, { kind: 'sprite-create' | 'sprite-move' | 'sprite-resize' }>,
+  event: PointerEvent,
+  cell: Cell,
+) {
+  const { width, height } = doc.value
+  if (current.kind === 'sprite-create') {
+    const end = { x: clamp(cell.x, 0, width - 1), y: clamp(cell.y, 0, height - 1) }
+    // 押下したマスから移動するまでは作成しない
+    if (spriteDraft.value === null && sameCell(current.start, end)) return
+    updateSpriteDraft(null, rectFromCells(current.start, end))
+  } else if (current.kind === 'sprite-move') {
+    const { origin } = current
+    const dx = cell.x - current.start.x
+    const dy = cell.y - current.start.y
+    if (spriteDraft.value === null && dx === 0 && dy === 0) return
+    updateSpriteDraft(current.id, {
+      x: clamp(origin.x + dx, 0, width - origin.width),
+      y: clamp(origin.y + dy, 0, height - origin.height),
+      width: origin.width,
+      height: origin.height,
+    })
+  } else {
+    // つかんだ辺をマウス位置に最も近いマスの境界に合わせる
+    const point = localPoint(event)
+    const bx = clamp(Math.round((point.x - originX.value) / tileSize.value), 0, width)
+    const by = clamp(Math.round((point.y - originY.value) / tileSize.value), 0, height)
+    const { origin, edges } = current
+    let x0 = origin.x
+    let y0 = origin.y
+    let x1 = origin.x + origin.width
+    let y1 = origin.y + origin.height
+    if (edges.left) x0 = Math.min(bx, x1 - 1)
+    if (edges.right) x1 = Math.max(bx, x0 + 1)
+    if (edges.top) y0 = Math.min(by, y1 - 1)
+    if (edges.bottom) y1 = Math.max(by, y0 + 1)
+    updateSpriteDraft(current.id, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 })
+  }
+}
+
 function onPointerDown(event: PointerEvent) {
   if (gesture.value || !container.value) return
   altHeld.value = event.altKey
@@ -409,7 +677,13 @@ function onPointerDown(event: PointerEvent) {
     event.preventDefault()
     return
   }
-  if (tool === 'pan') {
+  if (tool === 'sprite') {
+    // タイルは編集しないため、アクティブなレイヤーが非表示でも使える
+    if (!beginSpriteGesture(event, cell)) {
+      event.preventDefault()
+      return
+    }
+  } else if (tool === 'pan') {
     gesture.value = {
       kind: 'pan',
       pointerId: event.pointerId,
@@ -452,9 +726,14 @@ function onPointerMove(event: PointerEvent) {
   }
   altHeld.value = event.altKey
   moveKeyHeld.value = isMoveModifierPressed(event)
+  hoverPoint.value = localPoint(event)
   const cell = cellAt(event)
   if (!sameCell(hover.value, cell)) hover.value = cell
   if (!current || current.pointerId !== event.pointerId) return
+  if (current.kind === 'sprite-create' || current.kind === 'sprite-move' || current.kind === 'sprite-resize') {
+    continueSpriteGesture(current, event, cell)
+    return
+  }
   if (current.kind === 'move') {
     const offset = { x: cell.x - current.start.x, y: cell.y - current.start.y }
     if (!sameCell(moveOffset.value, offset)) moveOffset.value = offset
@@ -482,6 +761,18 @@ function finishGesture(event: PointerEvent, cancelled: boolean) {
     container.value.releasePointerCapture(event.pointerId)
   }
   if (current.kind === 'pan') return
+  if (current.kind === 'sprite-create' || current.kind === 'sprite-move' || current.kind === 'sprite-resize') {
+    const draft = spriteDraft.value
+    spriteDraft.value = null
+    // 離した時点で確定する。他のスプライトと重なる場合は確定しない
+    if (cancelled || !draft?.valid) return
+    if (draft.id === null) {
+      editor.addSprite(draft.rect)
+    } else {
+      editor.setSpriteRect(draft.id, draft.rect)
+    }
+    return
+  }
   if (current.kind === 'move') {
     const offset = moveOffset.value
     moveOffset.value = null
@@ -502,7 +793,9 @@ function onPointerCancel(event: PointerEvent) {
 }
 
 function onPointerLeave() {
-  if (!gesture.value) hover.value = null
+  if (gesture.value) return
+  hover.value = null
+  hoverPoint.value = null
 }
 
 // ---- キーボード ----
@@ -551,6 +844,7 @@ watch(
       altHeld.value = false
       moveKeyHeld.value = false
       hover.value = null
+      hoverPoint.value = null
     }
   },
 )
@@ -617,6 +911,20 @@ onBeforeUnmount(() => {
   >
     <canvas ref="mainCanvas" class="editor-canvas__layer" />
     <canvas ref="overlayCanvas" class="editor-canvas__layer" />
+    <button
+      v-for="label in spriteLabels"
+      :key="label.id"
+      type="button"
+      class="sprite-label"
+      :class="{ 'sprite-label--selected': label.selected, 'sprite-label--inert': !labelsInteractive }"
+      :style="{ transform: `translate(${label.left}px, ${label.top}px) translateY(-100%)` }"
+      :title="`Rename ${label.name}`"
+      :tabindex="labelsInteractive ? 0 : -1"
+      @pointerdown.stop
+      @click="onLabelClick(label.id)"
+    >
+      {{ label.name }}
+    </button>
     <p class="status" aria-live="off">
       <span>{{ doc.width }} × {{ doc.height }}</span>
       <span>{{ tileSize }}px</span>
@@ -639,6 +947,37 @@ onBeforeUnmount(() => {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.sprite-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 200px;
+  padding: 1px 6px;
+  overflow: hidden;
+  border: none;
+  border-radius: 3px 3px 0 0;
+  background: rgb(60 150 210 / 85%);
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sprite-label:hover {
+  background: rgb(80 170 230 / 95%);
+}
+
+.sprite-label--selected,
+.sprite-label--selected:hover {
+  background: var(--color-accent);
+}
+
+.sprite-label--inert {
+  pointer-events: none;
 }
 
 .status {

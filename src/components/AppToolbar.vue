@@ -25,7 +25,7 @@ const { docName, isDirty, canTrim } = editor
       <button
         type="button"
         class="button"
-        title="Trim the canvas to fit the tiles"
+        title="Trim the canvas to fit the tiles and sprites"
         :disabled="!canTrim"
         @click="emit('trim')"
       >

@@ -46,6 +46,14 @@ export interface GuideSpacing {
   readonly height: number
 }
 
+/** スプライトシートの各スプライトの範囲。キャンバス範囲内に収まり、互いに重ならない */
+export interface Sprite extends Rect {
+  /** エディタ内でのみ使う識別子。ファイルには保存しない */
+  readonly id: string
+  /** 大文字・小文字を区別せずに一意とする。使えない文字は `INVALID_SPRITE_NAME_CHARS` */
+  readonly name: string
+}
+
 /** ドキュメントは不変として扱い、変更時は新しいオブジェクトを作る */
 export interface Doc {
   /** 幅（マス） */
@@ -56,6 +64,8 @@ export interface Doc {
   readonly guideSpacing: GuideSpacing
   /** 背面から前面の順。先頭は常に背景レイヤー */
   readonly layers: readonly Layer[]
+  /** 作成順 */
+  readonly sprites: readonly Sprite[]
 }
 
 export interface Cell {
